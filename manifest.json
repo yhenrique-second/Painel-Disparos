@@ -1,0 +1,25 @@
+{
+  "name": "Painel SDR - Hesed",
+  "short_name": "Painel SDR",
+  "description": "Painel de controle SDR — Foco, Disciplina, Execução",
+  "start_url": "/painel-sdr/",
+  "scope": "/painel-sdr/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "orientation": "landscape",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

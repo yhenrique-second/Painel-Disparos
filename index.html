@@ -1,463 +1,1506 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Painel de Disparos</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel SDR - Hesed</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#09090b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Painel SDR">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>tailwind.config={content:[],theme:{extend:{}}}</script>
+  <script>tailwind.config = { content: [], theme: { extend: {} } }</script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
-    body{font-family:'Inter',system-ui,sans-serif;}
-    input,select,textarea{color-scheme:dark;}
-    ::-webkit-scrollbar{width:4px;}
-    ::-webkit-scrollbar-thumb{background:#3f3f46;border-radius:4px;}
-    .copy-flash{animation:fg 0.4s ease;}
-    @keyframes fg{0%{background:#059669cc;}100%{background:transparent;}}
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .card-hover:hover { transform: translateY(-4px); transition: all 0.3s; }
+    .progress-bar { transition: width 0.4s ease; }
+
+    /* Painel lateral */
+    #demanda-panel {
+      transform: translateX(100%);
+      transition: transform 0.35s cubic-bezier(0.4,0,0.2,1);
+    }
+    #demanda-panel.open {
+      transform: translateX(0);
+    }
+    #panel-overlay {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    #panel-overlay.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    /* Scrollbar fina */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+
+    /* Checkbox customizado */
+    .subtask-check:checked + label { text-decoration: line-through; color: #71717a; }
+
+    /* Input e select escuro */
+    input, select, textarea { color-scheme: dark; }
+
+    /* Modal mensagens */
+    #msg-modal { transition: opacity 0.25s; }
+    .msg-tab-btn.active { background: #7c3aed; color: white; }
+    .copy-flash { animation: flashGreen 0.4s ease; }
+    @keyframes flashGreen {
+      0%   { background: #059669; }
+      100% { background: transparent; }
+    }
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen">
-<div class="max-w-4xl mx-auto px-6 py-8">
+
+<div class="max-w-7xl mx-auto px-6 py-8">
 
   <!-- Header -->
   <div class="flex justify-between items-center mb-8">
     <div>
-      <h1 class="text-4xl font-bold">Painel de Disparos</h1>
-      <p class="text-zinc-400 mt-1">Controle de mensagens por consultor</p>
+      <h1 class="text-4xl font-bold">Painel SDR</h1>
+      <p class="text-zinc-400 mt-1">Foco • Disciplina • Execução</p>
     </div>
-    <div class="flex gap-3">
-      <span class="bg-emerald-500/10 text-emerald-400 px-4 py-2 rounded-2xl text-sm flex items-center gap-2">
-        <i class="fas fa-circle text-xs animate-pulse"></i> Conectado
-      </span>
-      <button onclick="abrirHistorico()" class="bg-zinc-800 hover:bg-zinc-700 px-4 py-2 rounded-2xl text-sm flex items-center gap-2 transition-colors">
-        <i class="fas fa-clock-rotate-left"></i> Histórico
+    <div class="flex items-center gap-3">
+      <div class="bg-green-500/10 text-green-400 px-5 py-2 rounded-2xl text-sm font-medium flex items-center gap-2">
+        <i class="fas fa-circle text-xs animate-pulse"></i>
+        Operação Ativa
+      </div>
+      <div onclick="editarMesAtual()" id="badge-mes" class="cursor-pointer bg-orange-500/10 text-orange-400 px-5 py-2 rounded-2xl text-sm font-medium flex items-center gap-3 relative overflow-hidden min-w-[180px]">
+        <div id="mes-progress-bar" class="absolute left-0 top-0 h-full bg-orange-500/20 rounded-2xl transition-all duration-700"></div>
+        <span class="relative z-10 flex items-center gap-2">
+          <i class="fas fa-calendar-days"></i>
+          <span id="badge-mes-texto">carregando...</span>
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cards -->
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-10" id="metrics-grid"></div>
+
+  <!-- PAUSAS DO DIA -->
+  <div class="bg-zinc-900 rounded-3xl p-8 mb-10">
+    <div class="flex justify-between items-center mb-6">
+      <h3 class="text-2xl font-semibold">Pausas do Dia</h3>
+      <div id="pause-status" class="text-emerald-400 font-medium">0 de 3 pausas concluídas</div>
+    </div>
+    <!-- Barra de progresso geral (pausas concluídas) -->
+    <div class="h-3 bg-zinc-800 rounded-full mb-8 overflow-hidden">
+      <div id="pause-progress" class="h-full bg-emerald-500 rounded-full progress-bar" style="width: 0%"></div>
+    </div>
+    <div class="flex items-center gap-4">
+      <!-- Botão com barra de progresso interna -->
+      <button onclick="togglePause()" id="pause-btn"
+        class="relative flex-1 overflow-hidden bg-zinc-800 hover:bg-zinc-700 py-5 rounded-2xl font-medium text-lg flex items-center justify-center gap-3 transition-colors">
+        <!-- Barra de progresso interna (tempo da pausa) -->
+        <div id="pause-btn-bar" class="absolute inset-0 left-0 top-0 h-full bg-emerald-600 rounded-2xl transition-none" style="width: 0%"></div>
+        <!-- Conteúdo sobreposto -->
+        <span class="relative z-10 flex items-center gap-3">
+          <i id="pause-icon" class="fas fa-play"></i>
+          <span id="pause-text">PAUSA 1</span>
+        </span>
+      </button>
+      <button onclick="finishPauseEarly()" class="bg-zinc-700 hover:bg-zinc-600 px-6 py-5 rounded-2xl flex items-center gap-2 transition-colors">
+        <i class="fas fa-check"></i>
       </button>
     </div>
+    <div id="timer-pause" class="text-6xl font-mono font-bold text-center mt-8">10:00</div>
   </div>
 
-  <!-- Abas consultores -->
-  <div class="flex gap-2 mb-8">
-    <button onclick="trocarAba('dashboard')" id="tab-dashboard" class="px-5 py-2.5 rounded-2xl font-medium text-sm bg-violet-600 text-white transition-colors">
-      <i class="fas fa-chart-pie mr-2"></i>Dashboard
-    </button>
-    <button onclick="trocarAba('duda')" id="tab-duda" class="px-5 py-2.5 rounded-2xl bg-zinc-800 text-zinc-400 hover:bg-zinc-700 font-medium text-sm transition-colors">
-      <i class="fas fa-user mr-2"></i>Maria Eduarda
-    </button>
-    <button onclick="trocarAba('fabio')" id="tab-fabio" class="px-5 py-2.5 rounded-2xl bg-zinc-800 text-zinc-400 hover:bg-zinc-700 font-medium text-sm transition-colors">
-      <i class="fas fa-user mr-2"></i>Fábio
-    </button>
-    <button onclick="trocarAba('henrique')" id="tab-henrique" class="px-5 py-2.5 rounded-2xl bg-zinc-800 text-zinc-400 hover:bg-zinc-700 font-medium text-sm transition-colors">
-      <i class="fas fa-user mr-2"></i>Henrique
-    </button>
+  <!-- GRÁFICO PROGRESSO MENSAL -->
+  <div class="bg-zinc-900 rounded-3xl p-8 mb-10">
+    <h2 class="text-2xl font-semibold mb-6">Progresso Mensal</h2>
+    <div class="h-80">
+      <canvas id="monthlyChart"></canvas>
+    </div>
   </div>
 
-  <div id="conteudo"></div>
+  <!-- DEMANDAS -->
+  <div class="bg-zinc-900 rounded-3xl p-8 mb-10">
+    <div class="flex justify-between items-center mb-6">
+      <div class="flex items-center gap-4">
+        <h3 class="text-2xl font-semibold">Demandas</h3>
+        <!-- Filtro de status -->
+        <div class="flex gap-2 text-sm">
+          <button onclick="setFiltro('todos')" id="filtro-todos" class="filtro-btn px-3 py-1 rounded-xl bg-violet-600 text-white">Todas</button>
+          <button onclick="setFiltro('A fazer')" id="filtro-afazer" class="filtro-btn px-3 py-1 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-zinc-700">A fazer</button>
+          <button onclick="setFiltro('Em andamento')" id="filtro-andamento" class="filtro-btn px-3 py-1 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-zinc-700">Em andamento</button>
+          <button onclick="setFiltro('Concluído')" id="filtro-concluido" class="filtro-btn px-3 py-1 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-zinc-700">Concluído</button>
+        </div>
+      </div>
+      <button onclick="abrirNovaDemanda()" class="bg-violet-600 hover:bg-violet-500 px-6 py-2 rounded-2xl flex items-center gap-2 text-sm font-medium">
+        <i class="fas fa-plus"></i> Nova Demanda
+      </button>
+    </div>
+    <div id="demandas-list" class="space-y-2"></div>
+  </div>
+
+  <!-- Disparos do Dia -->
+  <div class="bg-zinc-900 rounded-3xl p-8">
+    <!-- Cabeçalho -->
+    <div class="flex justify-between items-center mb-6">
+      <div class="flex items-center gap-3">
+        <h2 class="text-2xl font-semibold">Disparos do Dia</h2>
+        <!-- Contador clicável abre histórico -->
+        <button onclick="abrirHistoricoDisparos()" id="disparos-contador"
+          class="bg-violet-500/20 text-violet-400 text-xs font-semibold px-3 py-1 rounded-xl hover:bg-violet-500/30 transition-colors">
+          0 disparos
+        </button>
+      </div>
+      <div class="flex items-center gap-2">
+        <!-- Botão abrir modal de mensagens -->
+        <button onclick="abrirModalMensagens()"
+          class="bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-5 py-2 rounded-2xl flex items-center gap-2 transition-colors">
+          <i class="fas fa-message"></i> Mensagens
+        </button>
+        <button onclick="limparDisparos()" class="text-zinc-500 hover:text-red-400 text-sm flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-500/10 transition-colors">
+          <i class="fas fa-trash-can"></i> Limpar tudo
+        </button>
+      </div>
+    </div>
+
+    <!-- Inputs -->
+    <div class="flex gap-3 items-end mb-8">
+      <!-- Cidade -->
+      <div class="flex-1">
+        <label class="text-xs text-zinc-500 mb-1 block">Cidade</label>
+        <input id="nova-cidade" placeholder="Ex: Ponta Grossa"
+          class="w-full bg-zinc-800 rounded-2xl px-5 py-4 text-white outline-none focus:ring-2 focus:ring-violet-500"
+          onkeydown="if(event.key==='Enter') addDisparo()">
+      </div>
+      <!-- Empresa -->
+      <div class="w-52">
+        <label class="text-xs text-zinc-500 mb-1 block">Empresa</label>
+        <div class="relative">
+          <select id="empresa-select"
+            class="w-full appearance-none bg-zinc-800 rounded-2xl px-5 py-4 text-white outline-none focus:ring-2 focus:ring-violet-500 pr-10 cursor-pointer">
+            <option value="WebiFibra">WebiFibra</option>
+            <option value="DBUG">DBUG Telecom</option>
+          </select>
+          <div class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400">
+            <i class="fas fa-chevron-down text-xs"></i>
+          </div>
+        </div>
+      </div>
+      <!-- Botão -->
+      <button onclick="addDisparo()"
+        class="bg-violet-600 hover:bg-violet-500 px-8 py-4 rounded-2xl font-medium transition-colors flex items-center justify-center gap-2 flex-shrink-0">
+        <i class="fas fa-plus"></i>
+      </button>
+    </div>
+
+    <!-- Lista agrupada por empresa -->
+    <div id="disparos-list" class="space-y-6"></div>
+  </div>
 </div>
 
-<!-- Modal Histórico -->
+<!-- ===================== MODAL MENSAGENS ===================== -->
+<div id="msg-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+  <div class="bg-zinc-900 rounded-3xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-8 pt-7 pb-5 border-b border-zinc-800 flex-shrink-0">
+      <h3 class="text-xl font-bold">Mensagens de Disparo</h3>
+      <button onclick="fecharModalMensagens()" class="text-zinc-400 hover:text-white px-2 py-1 rounded-xl hover:bg-zinc-800 transition-colors">
+        <i class="fas fa-xmark text-lg"></i>
+      </button>
+    </div>
+    <!-- Abas -->
+    <div class="flex gap-2 px-8 py-4 border-b border-zinc-800 flex-shrink-0 flex-wrap">
+      <button onclick="trocarAba('whatsapp_dbug')" id="tab-whatsapp_dbug"
+        class="msg-tab-btn active flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-violet-600 text-white transition-colors">
+        <i class="fab fa-whatsapp"></i> WhatsApp DBUG
+        <span id="cnt-whatsapp" class="bg-white/20 text-white text-xs px-2 py-0.5 rounded-lg">0</span>
+      </button>
+      <button onclick="trocarAba('whatsapp_webi')" id="tab-whatsapp_webi"
+        class="msg-tab-btn flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors">
+        <i class="fab fa-whatsapp"></i> WhatsApp WebiFibra
+        <span id="cnt-whatsapp-webi" class="bg-zinc-700 text-zinc-300 text-xs px-2 py-0.5 rounded-lg">0</span>
+      </button>
+      <button onclick="trocarAba('email')" id="tab-email"
+        class="msg-tab-btn flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors">
+        <i class="fas fa-envelope"></i> E-mail
+        <span id="cnt-email" class="bg-zinc-700 text-zinc-300 text-xs px-2 py-0.5 rounded-lg">0</span>
+      </button>
+      <button onclick="trocarAba('sms')" id="tab-sms"
+        class="msg-tab-btn flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700 transition-colors">
+        <i class="fas fa-comment-sms"></i> SMS
+        <span id="cnt-sms" class="bg-zinc-700 text-zinc-300 text-xs px-2 py-0.5 rounded-lg">0</span>
+      </button>
+    </div>
+    <!-- Lista de mensagens -->
+    <div id="msg-lista" class="flex-1 overflow-y-auto px-8 py-6 space-y-4"></div>
+  </div>
+</div>
+
+<!-- ===================== MODAL HISTÓRICO DISPAROS ===================== -->
 <div id="hist-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-  <div class="bg-zinc-900 rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+  <div class="bg-zinc-900 rounded-3xl w-full max-w-lg flex flex-col max-h-[85vh]">
     <div class="flex items-center justify-between px-8 pt-7 pb-5 border-b border-zinc-800 flex-shrink-0">
       <h3 class="text-xl font-bold">Histórico de Disparos</h3>
-      <button onclick="fecharHistorico()" class="text-zinc-400 hover:text-white px-2 py-1 rounded-xl hover:bg-zinc-800"><i class="fas fa-xmark text-lg"></i></button>
-    </div>
-    <div class="flex gap-2 px-8 py-4 border-b border-zinc-800 flex-shrink-0 flex-wrap">
-      <button onclick="filtrarHist('todos')" id="hf-todos" class="px-3 py-1.5 rounded-xl text-xs font-medium bg-violet-600 text-white">Todos</button>
-      <button onclick="filtrarHist('duda')" id="hf-duda" class="px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700">Maria Eduarda</button>
-      <button onclick="filtrarHist('fabio')" id="hf-fabio" class="px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700">Fábio</button>
-      <button onclick="filtrarHist('henrique')" id="hf-henrique" class="px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700">Henrique</button>
+      <button onclick="fecharHistoricoDisparos()" class="text-zinc-400 hover:text-white px-2 py-1 rounded-xl hover:bg-zinc-800 transition-colors">
+        <i class="fas fa-xmark text-lg"></i>
+      </button>
     </div>
     <div id="hist-lista" class="flex-1 overflow-y-auto px-8 py-6 space-y-3"></div>
   </div>
 </div>
 
+<!-- ===================== PAINEL LATERAL DEMANDA ===================== -->
+<div id="panel-overlay" class="fixed inset-0 bg-black/60 z-40" onclick="fecharPainel()"></div>
+
+<div id="demanda-panel" class="fixed top-0 right-0 h-full w-full max-w-xl bg-zinc-900 z-50 shadow-2xl flex flex-col overflow-hidden">
+
+  <!-- Cabeçalho do painel -->
+  <div class="flex items-center justify-between px-7 py-5 border-b border-zinc-800">
+    <div class="flex items-center gap-3">
+      <!-- Status badge clicável -->
+      <button onclick="cycleStatus()" id="panel-status-badge" class="px-3 py-1 rounded-lg text-xs font-semibold"></button>
+      <!-- Prioridade badge clicável -->
+      <button onclick="cyclePrioridade()" id="panel-prioridade-badge" class="px-3 py-1 rounded-lg text-xs font-semibold"></button>
+    </div>
+    <div class="flex items-center gap-2">
+      <button onclick="deletarDemanda()" class="text-zinc-500 hover:text-red-400 px-3 py-2 rounded-xl hover:bg-red-500/10 text-sm transition-colors">
+        <i class="fas fa-trash"></i>
+      </button>
+      <button onclick="fecharPainel()" class="text-zinc-400 hover:text-white px-3 py-2 rounded-xl hover:bg-zinc-800 transition-colors">
+        <i class="fas fa-xmark text-lg"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Corpo com scroll -->
+  <div class="flex-1 overflow-y-auto px-7 py-6 space-y-6">
+
+    <!-- Título -->
+    <div>
+      <input id="panel-titulo" class="w-full bg-transparent text-2xl font-bold text-white placeholder-zinc-600 outline-none border-b border-transparent focus:border-violet-500 pb-1 transition-colors" placeholder="Título da demanda" oninput="autoSave()">
+    </div>
+
+    <!-- Datas -->
+    <div class="grid grid-cols-2 gap-4">
+      <!-- Data de adição -->
+      <div class="bg-zinc-800 rounded-2xl p-4">
+        <p class="text-xs text-zinc-500 mb-1"><i class="fas fa-calendar-plus mr-1"></i>Data de adição</p>
+        <p id="panel-data-adicao" class="text-sm font-medium text-zinc-300"></p>
+      </div>
+
+      <!-- Entrega / Prazo -->
+      <div class="bg-zinc-800 rounded-2xl p-4">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs text-zinc-500"><i class="fas fa-calendar-check mr-1"></i>Entrega / Prazo</p>
+          <!-- Toggle prazo incerto -->
+          <button onclick="toggleMesIncerto()" id="btn-mes-incerto"
+            class="text-xs px-2 py-1 rounded-lg bg-zinc-700 text-zinc-400 hover:bg-zinc-600 transition-colors">
+            Prazo incerto
+          </button>
+        </div>
+
+        <!-- Seletor dia/mês -->
+        <div id="seletor-data" class="">
+          <div class="flex gap-2">
+            <!-- Dia -->
+            <div class="flex-1">
+              <p class="text-xs text-zinc-600 mb-1 text-center">Dia</p>
+              <div class="flex items-center gap-1 bg-zinc-700 rounded-xl px-2 py-2">
+                <button onclick="alterarDia(-1)" class="text-zinc-400 hover:text-white px-1 transition-colors">
+                  <i class="fas fa-chevron-left text-xs"></i>
+                </button>
+                <span id="display-dia" class="flex-1 text-center font-bold text-sm text-white">—</span>
+                <button onclick="alterarDia(1)" class="text-zinc-400 hover:text-white px-1 transition-colors">
+                  <i class="fas fa-chevron-right text-xs"></i>
+                </button>
+              </div>
+            </div>
+            <!-- Mês -->
+            <div class="flex-1">
+              <p class="text-xs text-zinc-600 mb-1 text-center">Mês</p>
+              <div class="flex items-center gap-1 bg-zinc-700 rounded-xl px-2 py-2">
+                <button onclick="alterarMes(-1)" class="text-zinc-400 hover:text-white px-1 transition-colors">
+                  <i class="fas fa-chevron-left text-xs"></i>
+                </button>
+                <span id="display-mes" class="flex-1 text-center font-bold text-sm text-white">—</span>
+                <button onclick="alterarMes(1)" class="text-zinc-400 hover:text-white px-1 transition-colors">
+                  <i class="fas fa-chevron-right text-xs"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <button onclick="limparData()" class="mt-2 text-xs text-zinc-600 hover:text-zinc-400 w-full text-center transition-colors">
+            Limpar data
+          </button>
+        </div>
+
+        <!-- Seletor mês incerto -->
+        <div id="seletor-mes-incerto" class="hidden">
+          <div class="flex items-center gap-1 bg-zinc-700 rounded-xl px-2 py-2">
+            <button onclick="alterarMesIncerto(-1)" class="text-zinc-400 hover:text-white px-1 transition-colors">
+              <i class="fas fa-chevron-left text-xs"></i>
+            </button>
+            <span id="display-mes-incerto" class="flex-1 text-center font-bold text-sm text-white">Janeiro</span>
+            <button onclick="alterarMesIncerto(1)" class="text-zinc-400 hover:text-white px-1 transition-colors">
+              <i class="fas fa-chevron-right text-xs"></i>
+            </button>
+          </div>
+          <button onclick="limparData()" class="mt-2 text-xs text-zinc-600 hover:text-zinc-400 w-full text-center transition-colors">
+            Limpar prazo
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Descrição -->
+    <div>
+      <p class="text-xs text-zinc-500 mb-2 uppercase tracking-wider">Descrição</p>
+      <textarea id="panel-descricao" oninput="autoSave()" rows="4" placeholder="Descreva a demanda, contexto, objetivos..." class="w-full bg-zinc-800 rounded-2xl px-5 py-4 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-violet-500 resize-none"></textarea>
+    </div>
+
+    <!-- Subtarefas -->
+    <div>
+      <div class="flex justify-between items-center mb-3">
+        <p class="text-xs text-zinc-500 uppercase tracking-wider">Subtarefas</p>
+        <button onclick="adicionarSubtarefa()" class="text-violet-400 hover:text-violet-300 text-xs flex items-center gap-1">
+          <i class="fas fa-plus"></i> Adicionar
+        </button>
+      </div>
+      <div id="subtarefas-list" class="space-y-2"></div>
+      <!-- Input inline para nova subtarefa -->
+      <div id="nova-subtarefa-input" class="hidden mt-2">
+        <div class="flex gap-2">
+          <input id="subtarefa-texto" placeholder="Nome da subtarefa..." class="flex-1 bg-zinc-800 rounded-xl px-4 py-2 text-sm outline-none focus:ring-1 focus:ring-violet-500" onkeydown="subtarefaKeydown(event)">
+          <button onclick="confirmarSubtarefa()" class="bg-violet-600 hover:bg-violet-500 px-4 py-2 rounded-xl text-sm">
+            <i class="fas fa-check"></i>
+          </button>
+          <button onclick="cancelarSubtarefa()" class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-xl text-sm">
+            <i class="fas fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notas -->
+    <div>
+      <p class="text-xs text-zinc-500 mb-2 uppercase tracking-wider">Notas / Atualizações</p>
+      <textarea id="panel-notas" oninput="autoSave()" rows="4" placeholder="Anote atualizações, bloqueios, decisões..." class="w-full bg-zinc-800 rounded-2xl px-5 py-4 text-sm text-zinc-200 placeholder-zinc-600 outline-none focus:ring-1 focus:ring-violet-500 resize-none"></textarea>
+    </div>
+
+  </div>
+
+  <!-- Rodapé: salvo automaticamente -->
+  <div class="px-7 py-4 border-t border-zinc-800 flex items-center justify-between">
+    <span id="save-indicator" class="text-xs text-zinc-600">Salvo automaticamente</span>
+    <button onclick="fecharPainel()" class="bg-violet-600 hover:bg-violet-500 px-6 py-2 rounded-xl text-sm font-medium">Fechar</button>
+  </div>
+</div>
+
+<!-- Modal Recorde -->
+<div id="recode-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+  <div class="bg-zinc-900 rounded-3xl w-full max-w-2xl p-8 mx-4">
+    <h3 class="text-2xl font-bold mb-6">Recorde Diário SDR</h3>
+    <div class="grid grid-cols-2 gap-6 mb-8">
+      <div>
+        <p class="text-sm text-zinc-400 mb-2">Valor</p>
+        <input id="modal-recorde-valor" type="number" class="w-full bg-zinc-800 text-6xl font-bold p-8 rounded-3xl text-center">
+      </div>
+      <div>
+        <p class="text-sm text-zinc-400 mb-2">Dia</p>
+        <div class="flex gap-2">
+          <button onclick="changeDate(-1)" class="bg-zinc-800 hover:bg-zinc-700 px-6 py-8 rounded-3xl text-2xl font-bold">-</button>
+          <div id="modal-dia-display" class="flex-1 bg-zinc-800 p-8 rounded-3xl text-center text-3xl font-bold text-white flex items-center justify-center">—</div>
+          <button onclick="changeDate(1)" class="bg-zinc-800 hover:bg-zinc-700 px-6 py-8 rounded-3xl text-2xl font-bold">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center justify-between mb-4">
+      <h4 class="font-medium">Histórico</h4>
+      <p class="text-xs text-zinc-600"><i class="fas fa-grip-vertical mr-1"></i>Arraste para reordenar</p>
+    </div>
+    <div id="historico-lista" class="max-h-80 overflow-auto space-y-2 pr-2"></div>
+    <div class="flex gap-4 mt-8">
+      <button onclick="saveRecordeModal()" class="flex-1 bg-emerald-600 py-4 rounded-2xl font-medium">Salvar</button>
+      <button onclick="closeRecordeModal()" class="flex-1 bg-zinc-700 py-4 rounded-2xl font-medium">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <script>
-const SB='https://vptrxkjbbbvlyuviizwu.supabase.co';
-const KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZwdHJ4a2piYmJ2bHl1dmlpend1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1NDUyNTMsImV4cCI6MjA5OTEyMTI1M30.eGaJpZS8cxUlrYMp0kRkziLax7Z9c2kdLY3_jtxPkx0';
-const H={'apikey':KEY,'Authorization':`Bearer ${KEY}`,'Content-Type':'application/json','Prefer':'return=representation'};
+  // ======================== DADOS ========================
+  let metrics = {
+    // Meta Desafio
+    metaDesafio_dbug: 170, metaDesafio_webi: 100,
+    // Meta Recorde
+    metaRecorde_dbug: 200, metaRecorde_webi: 120,
+    // Retiradas
+    retiradas_dbug: 80, retiradas_webi: 20,
+    // Recorde Diário
+    recordeDiario: 17, recordeData: "25/05",
+  };
+  let recordeHistory = [];
+  let monthlyChart = null;
+  let currentPause = 1, completedPauses = 0, pauseTimeLeft = 600, pauseInterval = null, isPaused = true;
+  let demandas = [];
+  let demandaAbertaIdx = null;
+  let filtroAtivo = 'todos';
+  let autoSaveTimer = null;
 
-async function sbGet(q){try{const r=await fetch(`${SB}/rest/v1/${q}`,{headers:H});return await r.json();}catch{return[];}}
-async function sbPost(t,d){try{const r=await fetch(`${SB}/rest/v1/${t}`,{method:'POST',headers:H,body:JSON.stringify(d)});return await r.json();}catch{return null;}}
-async function sbPatch(t,f,d){try{await fetch(`${SB}/rest/v1/${t}?${f}`,{method:'PATCH',headers:H,body:JSON.stringify(d)});}catch{}}
+  function loadData() {
+    const saved = localStorage.getItem('sdrMetrics_v2');
+    if (saved) metrics = JSON.parse(saved);
+    const savedHistory = localStorage.getItem('recordeHistory');
+    recordeHistory = savedHistory ? JSON.parse(savedHistory) : [];
+  }
+  function saveData() {
+    localStorage.setItem('sdrMetrics_v2', JSON.stringify(metrics));
+    localStorage.setItem('recordeHistory', JSON.stringify(recordeHistory));
+  }
+  function getTotalMes() { return recordeHistory.reduce((s, i) => s + i.valor, 0); }
 
-let abaAtiva='dashboard';
-let canalAtivo='dbug';
-let dadosDia={};
-let variacoes=JSON.parse(localStorage.getItem('var_v2')||'{}');
-let disparosCidades=JSON.parse(localStorage.getItem('cidades_v2')||'[]');
-let dragId=null;
-let histFiltro='todos';
+  // ======================== MÉTRICAS ========================
+  function cardDuplo(titulo, keyDbug, keyWebi, corDbug, corWebi, onclick) {
+    const vDbug = metrics[keyDbug] ?? 0;
+    const vWebi = metrics[keyWebi] ?? 0;
+    return `
+      <div onclick="${onclick}" class="bg-zinc-900 rounded-3xl p-6 card-hover cursor-pointer">
+        <p class="text-zinc-400 text-sm mb-3">${titulo}</p>
+        <div class="space-y-3">
+          <div>
+            <p class="text-4xl font-bold text-white">${vDbug}</p>
+            <p class="text-xs ${corDbug} mt-1">DBUG Telecom</p>
+          </div>
+          <div class="border-t border-zinc-800 pt-3">
+            <p class="text-4xl font-bold text-white">${vWebi}</p>
+            <p class="text-xs ${corWebi} mt-1">WebiFibra</p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
-const NOMES={duda:'Maria Eduarda',fabio:'Fábio',henrique:'Henrique'};
-const LABELS=['Apresentação','Direta','Direta','Ponte','Ultimato','Veredito','Desfecho'];
+  function renderMetrics() {
+    const totalMes = getTotalMes();
+    document.getElementById('metrics-grid').innerHTML = `
+      ${cardDuplo('Meta Desafio', 'metaDesafio_dbug', 'metaDesafio_webi', 'text-emerald-400', 'text-emerald-400', "editDuplo('metaDesafio_dbug','metaDesafio_webi','Meta Desafio')")}
+      ${cardDuplo('Meta Recorde', 'metaRecorde_dbug', 'metaRecorde_webi', 'text-amber-400', 'text-amber-400', "editDuplo('metaRecorde_dbug','metaRecorde_webi','Meta Recorde')")}
+      ${cardDuplo('Retiradas', 'retiradas_dbug', 'retiradas_webi', 'text-sky-400', 'text-sky-400', "editDuplo('retiradas_dbug','retiradas_webi','Retiradas')")}
+      <div onclick="openRecordeModal()" class="bg-zinc-900 rounded-3xl p-6 card-hover cursor-pointer">
+        <p class="text-zinc-400 text-sm">Recorde Diário SDR</p>
+        <p class="text-5xl font-bold text-white mt-2">${metrics.recordeDiario}</p>
+        <p class="text-amber-400 text-sm mt-1">${metrics.recordeData}</p>
+      </div>
+      <div class="bg-zinc-900 rounded-3xl p-6 card-hover">
+        <p class="text-zinc-400 text-sm">Total do Mês</p>
+        <p class="text-5xl font-bold text-violet-400 mt-2">${totalMes}</p>
+      </div>
+    `;
+  }
 
-function getHoje(){const d=new Date();return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;}
+  function editDuplo(keyDbug, keyWebi, titulo) {
+    const vDbug = prompt(`${titulo} — DBUG Telecom:`, metrics[keyDbug]);
+    if (vDbug !== null) metrics[keyDbug] = parseInt(vDbug) || 0;
+    const vWebi = prompt(`${titulo} — WebiFibra:`, metrics[keyWebi]);
+    if (vWebi !== null) metrics[keyWebi] = parseInt(vWebi) || 0;
+    saveData();
+    renderMetrics();
+  }
 
-function getMsgs(c,emp){
-  const nome=NOMES[c];
-  const art=c==='duda'?'a':'o';
-  const e=emp==='dbug'?'DBUG Telecom':'WebiFibra';
-  return[
-    {titulo:'Mensagem 1 — Apresentação',variacoes:[
-      `Olá, NOME! Tudo bem?\n\n*Sou ${art} ${nome}, da ${e}.*\n\nEstou entrando em contato para agendarmos a retirada do equipamento que ficou com você após o cancelamento do serviço.\n\n*Conseguimos marcar?* 😊`,
-      `Oi, NOME! Como vai?\n\n*Meu nome é ${nome}, da ${e}.*\n\nEstou passando para tratar sobre a retirada do equipamento que permanece com você desde o cancelamento do contrato.\n\n*Podemos agendar um horário?* 😊`,
-      `Olá, NOME! Tudo certo?\n\n*Aqui é ${art} ${nome}, da ${e}.*\n\nEntrei em contato para conversarmos sobre a devolução do equipamento cedido durante o período do seu contrato conosco.\n\n*Quando seria um bom momento para a retirada?* 😊`,
-      `Boa noite, NOME!\n\n*Sou ${art} ${nome} da ${e}.*\n\nEstou entrando em contato pois ainda temos um equipamento para retirar no seu endereço, referente ao contrato encerrado.\n\n*Podemos combinar isso juntos?* 😊`,
-      `Olá, NOME! Tudo bem por aí?\n\n*${nome} aqui, da equipe ${e}.*\n\nPreciso agendar a retirada do equipamento que ficou com você após o encerramento do serviço.\n\n*Me diz um horário que funciona pra você!* 😊`,
-      `Oi, NOME! Boa noite.\n\n*Aqui é ${art} ${nome}, da ${e}.*\n\nPassando para tratar da retirada do nosso equipamento que ainda está no seu endereço desde o cancelamento.\n\n*Conseguimos resolver isso essa semana?* 😊`,
-      `Olá, NOME!\n\n*${nome} da ${e} por aqui.*\n\nVim falar sobre a devolução do equipamento que ficou com você após o encerramento do contrato — é um processo simples e rápido.\n\n*Quando posso passar?* 😊`,
-      `Boa noite, NOME! Tudo bem?\n\n*Sou ${art} ${nome}, da ${e}.*\n\nEstou em contato para alinharmos a retirada do equipamento que ainda consta no seu endereço.\n\n*Qual o melhor horário pra você?* 😊`,
-      `Oi, NOME! Como está?\n\n*Aqui é ${art} ${nome}, da ${e}.*\n\nGostaria de agendar a retirada do equipamento que permaneceu com você após o cancelamento do serviço.\n\n*Podemos marcar?* 😊`,
-      `Olá, NOME! Tudo certo?\n\n*${nome} da ${e} aqui.*\n\nVim tratar de um ponto pendente: a retirada do equipamento que ficou com você quando o contrato foi encerrado.\n\n*Me chama aqui para agendarmos!* 😊`,
-    ]},
-    {titulo:'Mensagem 2 — Direta',variacoes:[
-      `Oi, NOME!\n\n*Ainda não conseguimos agendar a retirada do seu equipamento ${e}.*\n\nPrecisa de algum dia ou horário específico? É só me falar.`,
-      `Olá, NOME!\n\n*A retirada do equipamento ainda está pendente.*\n\nMe diz um horário que funciona pra você e a gente resolve rapidinho.`,
-      `Oi, NOME!\n\n*Passando para verificar sobre o equipamento da ${e} que ainda não foi retirado.*\n\nQualquer dificuldade de horário, me avisa que buscamos uma solução.`,
-      `Olá, NOME!\n\n*Ainda temos um equipamento a retirar no seu endereço.*\n\nÉ rápido e simples — me diz quando posso passar.`,
-      `Oi, NOME!\n\n*A retirada do equipamento ${e} ainda está em aberto.*\n\nSe tiver alguma restrição de horário ou dia, me fala que a gente se adapta.`,
-    ]},
-    {titulo:'Mensagem 3 — Direta',variacoes:[
-      `Boa noite, NOME.\n\n*Passando para reforçar sobre o equipamento pendente.*\n\nA retirada evita que a situação avance para cobrança — ainda dá tempo de resolver de forma simples.\n\n*Me chama aqui!*`,
-      `Boa noite, NOME.\n\n*O equipamento da ${e} ainda está pendente de retirada.*\n\nResolver agora evita que isso vire uma cobrança futura — ainda estamos em tempo.\n\n*É só me chamar.*`,
-      `Boa noite, NOME.\n\n*Já são algumas tentativas de contato sobre o equipamento.*\n\nQuero evitar que isso se torne um problema maior pra você — a solução ainda é simples.\n\n*Me responde aqui.*`,
-      `Boa noite, NOME.\n\n*O equipamento da ${e} segue no seu endereço e precisa ser retirado.*\n\nQuanto antes resolvermos, melhor pra ambos os lados.\n\n*Me chama!*`,
-      `Boa noite, NOME.\n\n*Reforçando sobre a retirada do equipamento que ainda está pendente.*\n\nAinda estamos na fase de agendamento — evite que isso avance para cobrança.\n\n*Me fala quando posso passar.*`,
-    ]},
-    {titulo:'Mensagem 4 — Ponte',variacoes:[
-      `Boa noite, NOME.\n\n*Já tentei te contatar algumas vezes sobre o equipamento da ${e}.*\n\nQuero entender se tem algo que está impedindo a retirada — posso te ajudar a encontrar a melhor solução.\n\n*Como você prefere resolver?*`,
-      `Boa noite, NOME.\n\n*Já tentamos entrar em contato algumas vezes, mas ainda não conseguimos resolver.*\n\nSe tiver alguma dificuldade ou dúvida sobre o processo, estou aqui para ajudar.\n\n*Como posso facilitar isso pra você?*`,
-      `Boa noite, NOME.\n\n*Percebo que ainda não conseguimos alinhar a retirada do equipamento.*\n\nSe tiver qualquer impedimento, me conta — a gente busca uma alternativa juntos.\n\n*O que está dificultando?*`,
-      `Boa noite, NOME.\n\n*Estou tentando resolver isso da forma mais tranquila possível.*\n\nSe houver algo que esteja impedindo a devolução, me fala abertamente — estou aqui para ajudar.\n\n*Como prefere encaminhar?*`,
-      `Boa noite, NOME.\n\n*Já são algumas tentativas de contato sem retorno.*\n\nQuero entender sua situação antes que o caso precise seguir outro caminho.\n\n*Me conta o que está acontecendo.*`,
-    ]},
-    {titulo:'Mensagem 5 — Ultimato',variacoes:[
-      `Olá, NOME.\n\n*O equipamento da ${e} segue pendente e o prazo para regularização está se encerrando.*\n\nA partir daqui, o caso será encaminhado para cobrança formal com multa contratual.\n\n*Ainda podemos resolver agora — é só responder.*`,
-      `Olá, NOME.\n\n*O prazo para devolução do equipamento está chegando ao fim.*\n\nCaso não haja retorno, o processo seguirá para cobrança com os encargos previstos em contrato.\n\n*Ainda dá tempo de resolver — basta me responder aqui.*`,
-      `Olá, NOME.\n\n*Estamos encerrando o prazo para regularização do equipamento pendente.*\n\nA partir desta etapa, o caso é encaminhado formalmente com multa contratual inclusa.\n\n*Resolva agora e evite complicações.*`,
-    ]},
-    {titulo:'Mensagem 6 — Veredito',variacoes:[
-      `Boa noite, NOME.\n\n*Estamos próximos de encerrar nossas tentativas de contato.*\n\nO não retorno resultará em cobrança formal do equipamento. Se preferir negociar, esta é a hora.\n\n*Como quer prosseguir?*`,
-      `Boa noite, NOME.\n\n*Chegamos a uma etapa decisiva sobre o equipamento da ${e}.*\n\nA ausência de retorno levará o caso à cobrança formal. Se quiser resolver antes disso, basta me responder aqui.\n\n*Como prefere encaminhar?*`,
-      `Boa noite, NOME.\n\n*Estamos encerrando o ciclo de contato antes do encaminhamento formal.*\n\nAinda é possível resolver de forma simples — mas preciso de um retorno seu agora.\n\n*Como quer proceder?*`,
-    ]},
-    {titulo:'Mensagem 7 — Desfecho',variacoes:[
-      `Boa noite, NOME.\n\n*Encerramos nossas tentativas de contato referente ao equipamento da ${e}.*\n\nCaso queira regularizar a situação antes que o processo siga seu curso, este é o momento.\n\n*Ficamos à disposição.*`,
-      `Boa noite, NOME.\n\n*Informamos que encerramos o ciclo de tentativas de contato sobre o equipamento pendente.*\n\nSe ainda tiver interesse em resolver antes do encaminhamento definitivo, estamos disponíveis.\n\n*A decisão é sua.*`,
-      `Boa noite, NOME.\n\n*Este é nosso último contato referente ao equipamento da ${e}.*\n\nA partir daqui, o caso segue seu curso internamente. Se quiser evitar isso, ainda há tempo.\n\n*Ficamos à disposição para uma última conversa.*`,
-    ]},
-  ];
-}
+  function editSimple(key) {
+    let valor = prompt(`Novo valor:`, metrics[key]);
+    if (valor !== null) { metrics[key] = parseInt(valor); saveData(); renderMetrics(); }
+  }
 
-// ======================== SUPABASE ========================
-async function carregarDados(){
-  const hoje=getHoje();
-  for(const c of['duda','fabio','henrique']){
-    const res=await sbGet(`Tabela2?consultor=eq.${c}&data=eq.${hoje}`);
-    if(Array.isArray(res)&&res.length>0){
-      dadosDia[c]=res[0];
-    }else{
-      const novo={consultor:c,data:hoje,dados_dbug:{m0:0,m1:0,m2:0,m3:0,m4:0,m5:0,m6:0},dados_webi:{m0:0,m1:0,m2:0,m3:0,m4:0,m5:0,m6:0}};
-      const criado=await sbPost('Tabela2',novo);
-      dadosDia[c]=Array.isArray(criado)?criado[0]:criado;
+  // ======================== GRÁFICO ========================
+  function renderMonthlyChart() {
+    const ctx = document.getElementById('monthlyChart');
+    if (monthlyChart) monthlyChart.destroy();
+    const labels = recordeHistory.map(i => i.data);
+    const values = recordeHistory.map(i => i.valor);
+    monthlyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels.length ? labels : ['Sem dados'],
+        datasets: [{ label: 'Recorde Diário', data: values.length ? values : [0], backgroundColor: '#a78bfa', borderRadius: 8 }]
+      },
+      options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+    });
+  }
+
+  // ======================== BADGE MÊS ========================
+  const NOMES_MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+  function diasNoMes(mes, ano) {
+    return new Date(ano, mes, 0).getDate(); // mes=1..12
+  }
+
+  function renderBadgeMes() {
+    const hoje = new Date();
+    const diaHoje = hoje.getDate();
+    const mesHoje = hoje.getMonth() + 1;
+    const anoHoje = hoje.getFullYear();
+    const total = diasNoMes(mesHoje, anoHoje);
+    const progresso = (diaHoje / total) * 100;
+    document.getElementById('badge-mes-texto').textContent = `${NOMES_MESES[mesHoje-1]} — dia ${diaHoje}/${total}`;
+    document.getElementById('mes-progress-bar').style.width = `${progresso}%`;
+  }
+
+  function editarMesAtual() {
+    // Só informa — o badge é automático pelo sistema
+    alert(`Hoje é dia ${new Date().getDate()} de ${NOMES_MESES[new Date().getMonth()]} de ${new Date().getFullYear()}.`);
+  }
+
+  // ======================== RECORDE MODAL ========================
+  let modalDiaAtual = null;
+
+  function openRecordeModal() {
+    document.getElementById('recode-modal').classList.remove('hidden');
+    const hoje = new Date();
+    modalDiaAtual = hoje.getDate();
+    atualizarDiaDisplay();
+    document.getElementById('modal-recorde-valor').value = metrics.recordeDiario;
+    renderHistoricoLista();
+  }
+
+  function atualizarDiaDisplay() {
+    document.getElementById('modal-dia-display').textContent = modalDiaAtual !== null ? `Dia ${modalDiaAtual}` : '—';
+  }
+
+  function closeRecordeModal() { document.getElementById('recode-modal').classList.add('hidden'); }
+
+  function changeDate(delta) {
+    const hoje = new Date();
+    const maxDia = diasNoMes(hoje.getMonth() + 1, hoje.getFullYear());
+    if (modalDiaAtual === null) modalDiaAtual = hoje.getDate();
+    modalDiaAtual = Math.max(1, Math.min(maxDia, modalDiaAtual + delta));
+    atualizarDiaDisplay();
+  }
+
+  let dragRecordeSrc = null;
+
+  function renderHistoricoLista() {
+    const container = document.getElementById('historico-lista');
+    if (!recordeHistory.length) {
+      container.innerHTML = '<p class="text-zinc-500 text-sm italic">Sem histórico ainda.</p>';
+      return;
+    }
+    container.innerHTML = recordeHistory.slice().reverse().map((item, i) => {
+      const realIdx = recordeHistory.length - 1 - i;
+      return `
+        <div class="group flex items-center gap-3 bg-zinc-800 px-5 py-3 rounded-2xl cursor-grab active:cursor-grabbing transition-all"
+          draggable="true"
+          data-idx="${realIdx}"
+          ondragstart="onRecordeDragStart(event, ${realIdx})"
+          ondragover="onRecordeDragOver(event)"
+          ondrop="onRecordeDrop(event, ${realIdx})"
+          ondragend="renderHistoricoLista()">
+          <i class="fas fa-grip-vertical text-zinc-600 group-hover:text-zinc-400 text-xs flex-shrink-0"></i>
+          <span class="flex-1 text-zinc-400 text-sm">${item.data}</span>
+          <span class="font-bold text-violet-400">${item.valor}</span>
+          <button onclick="excluirRecorde(${realIdx})" class="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-xs ml-2">
+            <i class="fas fa-xmark"></i>
+          </button>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function excluirRecorde(idx) {
+    recordeHistory.splice(idx, 1);
+    saveData();
+    renderHistoricoLista();
+    renderMetrics();
+    renderMonthlyChart();
+  }
+
+  function onRecordeDragStart(e, idx) {
+    dragRecordeSrc = idx;
+    e.currentTarget.style.opacity = '0.4';
+  }
+  function onRecordeDragOver(e) {
+    e.preventDefault();
+  }
+  function onRecordeDrop(e, targetIdx) {
+    e.preventDefault();
+    if (dragRecordeSrc === null || dragRecordeSrc === targetIdx) return;
+    const [moved] = recordeHistory.splice(dragRecordeSrc, 1);
+    recordeHistory.splice(targetIdx, 0, moved);
+    dragRecordeSrc = null;
+    saveData();
+    renderHistoricoLista();
+    renderMetrics();
+    renderMonthlyChart();
+  }
+
+  function saveRecordeModal() {
+    const valor = parseInt(document.getElementById('modal-recorde-valor').value);
+    if (!valor || modalDiaAtual === null) return;
+    const hoje = new Date();
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dia = String(modalDiaAtual).padStart(2, '0');
+    const dataStr = `${dia}/${mes}`;
+    metrics.recordeDiario = valor;
+    metrics.recordeData = dataStr;
+    recordeHistory.push({ id: Date.now().toString(), data: dataStr, valor });
+    if (recordeHistory.length > 60) recordeHistory.shift();
+    saveData();
+    closeRecordeModal();
+    renderMetrics();
+    renderMonthlyChart();
+  }
+
+  // ======================== PAUSAS ========================
+  const PAUSE_TOTAL = 600;
+
+  function savePausas() {
+    localStorage.setItem('pausas_v1', JSON.stringify({ currentPause, completedPauses }));
+  }
+
+  function loadPausas() {
+    const saved = localStorage.getItem('pausas_v1');
+    if (saved) {
+      const p = JSON.parse(saved);
+      currentPause = p.currentPause;
+      completedPauses = p.completedPauses;
     }
   }
-  renderConteudo();
-}
 
-function totalC(c){
-  if(!dadosDia[c])return 0;
-  const d=dadosDia[c].dados_dbug||{};
-  const w=dadosDia[c].dados_webi||{};
-  return Object.values(d).reduce((a,b)=>a+b,0)+Object.values(w).reduce((a,b)=>a+b,0);
-}
-function totalCan(c,can){
-  if(!dadosDia[c])return 0;
-  const d=can==='dbug'?(dadosDia[c].dados_dbug||{}):(dadosDia[c].dados_webi||{});
-  return Object.values(d).reduce((a,b)=>a+b,0);
-}
+  function updatePauseUI(resetTimer = false) {
+    document.getElementById('pause-status').textContent = `${completedPauses} de 2 pausas concluídas`;
+    document.getElementById('pause-progress').style.width = `${(completedPauses / 2) * 100}%`;
 
-// ======================== ABAS ========================
-function trocarAba(aba){
-  abaAtiva=aba;
-  ['dashboard','duda','fabio','henrique'].forEach(k=>{
-    const b=document.getElementById(`tab-${k}`);
-    if(!b)return;
-    b.className=k===aba
-      ?'px-5 py-2.5 rounded-2xl font-medium text-sm bg-violet-600 text-white transition-colors'
-      :'px-5 py-2.5 rounded-2xl bg-zinc-800 text-zinc-400 hover:bg-zinc-700 font-medium text-sm transition-colors';
-  });
-  if(aba!=='dashboard')canalAtivo='dbug';
-  renderConteudo();
-}
+    const proxima = Math.min(currentPause, 2);
+    if (!isPaused) {
+      document.getElementById('pause-icon').className = 'fas fa-pause';
+      document.getElementById('pause-text').textContent = `PAUSA ${proxima}`;
+    } else {
+      document.getElementById('pause-icon').className = 'fas fa-play';
+      document.getElementById('pause-text').textContent = completedPauses >= 2 ? 'PAUSAS CONCLUÍDAS' : `PAUSA ${proxima}`;
+      // Só reseta visual quando pausa é CONCLUÍDA, não quando pausada temporariamente
+      if (resetTimer) {
+        document.getElementById('timer-pause').textContent = '10:00';
+        document.getElementById('pause-btn-bar').style.width = '0%';
+      }
+    }
+  }
 
-function renderConteudo(){
-  const el=document.getElementById('conteudo');
-  if(abaAtiva==='dashboard') el.innerHTML=renderDashboard();
-  else el.innerHTML=renderConsultor(abaAtiva);
-}
+  function togglePause() {
+    if (completedPauses >= 2) return;
 
-// ======================== DASHBOARD ========================
-function renderDashboard(){
-  const total=['duda','fabio','henrique'].reduce((a,c)=>a+totalC(c),0);
-  const COR={WebiFibra:{bg:'bg-sky-500/10',text:'text-sky-400',border:'border-sky-500/20',dot:'bg-sky-400'},DBUG:{bg:'bg-violet-500/10',text:'text-violet-400',border:'border-violet-500/20',dot:'bg-violet-400'}};
+    if (pauseInterval) {
+      // Pausar temporariamente — só para o timer, não reseta nada
+      clearInterval(pauseInterval);
+      pauseInterval = null;
+      isPaused = true;
+      // Atualiza só ícone e texto, sem mexer no timer/barra
+      document.getElementById('pause-icon').className = 'fas fa-play';
+      document.getElementById('pause-text').textContent = `PAUSA ${Math.min(currentPause, 2)}`;
+    } else {
+      // Retomar ou iniciar
+      // Só reseta o tempo se for pausa nova (pauseTimeLeft está no máximo ou zerado)
+      if (pauseTimeLeft <= 0 || pauseTimeLeft === PAUSE_TOTAL) {
+        pauseTimeLeft = PAUSE_TOTAL;
+      }
+      isPaused = false;
+      pauseInterval = setInterval(() => {
+        pauseTimeLeft--;
+        const m = Math.floor(pauseTimeLeft / 60), s = pauseTimeLeft % 60;
+        document.getElementById('timer-pause').textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
+        const progresso = ((PAUSE_TOTAL - pauseTimeLeft) / PAUSE_TOTAL) * 100;
+        document.getElementById('pause-btn-bar').style.width = `${progresso}%`;
+        if (pauseTimeLeft <= 0) {
+          clearInterval(pauseInterval);
+          pauseInterval = null;
+          isPaused = true;
+          completedPauses++;
+          currentPause = completedPauses + 1;
+          pauseTimeLeft = PAUSE_TOTAL;
+          savePausas();
+          document.getElementById('pause-btn-bar').style.width = '100%';
+          setTimeout(() => updatePauseUI(true), 400);
+        }
+      }, 1000);
+      document.getElementById('pause-icon').className = 'fas fa-pause';
+      document.getElementById('pause-text').textContent = `PAUSA ${Math.min(currentPause, 2)}`;
+    }
+  }
 
-  const grupos={};const ordem=[];
-  disparosCidades.forEach(d=>{if(!grupos[d.empresa]){grupos[d.empresa]=[];ordem.push(d.empresa);}grupos[d.empresa].push(d);});
-  const emps=[...new Set(ordem)];
+  function finishPauseEarly() {
+    if (completedPauses >= 2) return;
+    if (pauseInterval) clearInterval(pauseInterval);
+    pauseInterval = null;
+    isPaused = true;
+    completedPauses++;
+    currentPause = completedPauses + 1;
+    pauseTimeLeft = PAUSE_TOTAL;
+    savePausas();
+    document.getElementById('pause-btn-bar').style.width = '100%';
+    setTimeout(() => updatePauseUI(true), 400);
+  }
 
-  const cidadesHTML=emps.map(emp=>{
-    const cor=COR[emp]||COR['DBUG'];
-    return`<div>
-      <div class="flex items-center gap-2 mb-3">
-        <div class="w-2 h-2 rounded-full ${cor.dot}"></div>
-        <span class="text-xs font-semibold uppercase tracking-wider ${cor.text}">${emp==='DBUG'?'DBUG Telecom':'WebiFibra'}</span>
-        <span class="text-xs text-zinc-600">${grupos[emp].length} cidade${grupos[emp].length!==1?'s':''}</span>
-      </div>
-      <div class="space-y-2 ml-4">${grupos[emp].map((d,i)=>`
-        <div class="group flex items-center gap-3 ${cor.bg} border ${cor.border} px-5 py-3 rounded-2xl cursor-grab"
-          draggable="true" data-id="${d.id}"
-          ondragstart="onDS(event,'${d.id}')" ondragover="onDO(event)" ondrop="onDP(event,'${d.id}')" ondragend="renderConteudo()">
-          <i class="fas fa-grip-vertical text-zinc-600 group-hover:text-zinc-400 text-xs flex-shrink-0"></i>
-          <span class="text-xs font-bold ${cor.text} w-6 text-center">${i+1}°</span>
-          <span class="flex-1 font-medium text-sm text-zinc-200">${d.cidade}</span>
-          <button onclick="removerCidade('${d.id}')" class="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 text-xs"><i class="fas fa-xmark"></i></button>
-        </div>`).join('')}</div></div>`;
-  }).join('');
+  // ======================== DEMANDAS ========================
+  const STATUS_CICLO = ['A fazer', 'Em andamento', 'Concluído'];
+  const PRIORIDADE_CICLO = ['Baixa', 'Média', 'Alta'];
 
-  return`
-    <div class="bg-zinc-900 rounded-3xl p-6 mb-6 flex justify-between items-center">
-      <div><p class="text-zinc-400 text-sm">Total Geral do Dia</p><p class="text-6xl font-bold text-violet-400 mt-1">${total}</p></div>
-      <p class="text-xs text-zinc-600">${getHoje()}</p>
-    </div>
-    <div class="grid grid-cols-3 gap-4 mb-8">
-      ${['duda','fabio','henrique'].map(c=>`
-        <div class="bg-zinc-900 rounded-3xl p-6">
-          <p class="text-sm text-zinc-400 mb-3">${NOMES[c]}</p>
-          <p class="text-4xl font-bold text-white mb-3">${totalC(c)}</p>
-          <div class="text-xs space-y-1">
-            <p class="text-violet-400">DBUG: <b>${totalCan(c,'dbug')}</b></p>
-            <p class="text-sky-400">WebiFibra: <b>${totalCan(c,'webi')}</b></p>
+  const STATUS_COR = {
+    'A fazer':       'bg-zinc-700 text-zinc-300',
+    'Em andamento':  'bg-blue-500/20 text-blue-400',
+    'Concluído':     'bg-emerald-500/20 text-emerald-400'
+  };
+  const PRIORIDADE_COR = {
+    'Baixa':  'bg-sky-500/20 text-sky-400',
+    'Média':  'bg-amber-500/20 text-amber-400',
+    'Alta':   'bg-red-500/20 text-red-400'
+  };
+  const PRIORIDADE_DOT = { 'Baixa': '🔵', 'Média': '🟡', 'Alta': '🔴' };
+
+  function loadDemandas() {
+    const saved = localStorage.getItem('demandas_v2');
+    demandas = saved ? JSON.parse(saved) : [];
+  }
+  function saveDemandas() {
+    localStorage.setItem('demandas_v2', JSON.stringify(demandas));
+  }
+
+  function setFiltro(filtro) {
+    filtroAtivo = filtro;
+    document.querySelectorAll('.filtro-btn').forEach(b => {
+      b.className = 'filtro-btn px-3 py-1 rounded-xl text-sm bg-zinc-800 text-zinc-400 hover:bg-zinc-700';
+    });
+    const ids = { 'todos': 'filtro-todos', 'A fazer': 'filtro-afazer', 'Em andamento': 'filtro-andamento', 'Concluído': 'filtro-concluido' };
+    const el = document.getElementById(ids[filtro]);
+    if (el) el.className = 'filtro-btn px-3 py-1 rounded-xl text-sm bg-violet-600 text-white';
+    renderDemandas();
+  }
+
+  function renderDemandas() {
+    const container = document.getElementById('demandas-list');
+    const lista = filtroAtivo === 'todos' ? demandas : demandas.filter(d => d.status === filtroAtivo);
+
+    if (!lista.length) {
+      container.innerHTML = '<p class="text-zinc-500 italic text-sm py-4 text-center">Nenhuma demanda encontrada.</p>';
+      return;
+    }
+
+    container.innerHTML = lista.map((task, i) => {
+      const idx = demandas.indexOf(task);
+      const subtotal = task.subtarefas ? task.subtarefas.length : 0;
+      const subconcluidas = task.subtarefas ? task.subtarefas.filter(s => s.concluida).length : 0;
+      const entrega = task.mesIncerto ? (task.mesTexto || '—') : (task.dataEntrega ? formatarData(task.dataEntrega) : '—');
+      return `
+        <div onclick="abrirDemanda(${idx})" class="group flex items-center gap-4 bg-zinc-800 hover:bg-zinc-750 border border-zinc-800 hover:border-zinc-600 px-5 py-4 rounded-2xl cursor-pointer transition-all">
+          <!-- Dot prioridade -->
+          <span class="text-base flex-shrink-0">${PRIORIDADE_DOT[task.prioridade] || '⚪'}</span>
+          <!-- Título e sub-info -->
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-sm truncate ${task.status === 'Concluído' ? 'line-through text-zinc-500' : ''}">${task.titulo || 'Sem título'}</p>
+            <div class="flex items-center gap-3 mt-1 text-xs text-zinc-500">
+              ${subtotal > 0 ? `<span><i class="fas fa-list-check mr-1"></i>${subconcluidas}/${subtotal}</span>` : ''}
+              ${entrega !== '—' ? `<span><i class="fas fa-calendar mr-1"></i>${entrega}</span>` : ''}
+            </div>
           </div>
-        </div>`).join('')}
-    </div>
-    <div class="bg-zinc-900 rounded-3xl p-8">
-      <div class="flex justify-between items-center mb-6">
-        <div class="flex items-center gap-3">
-          <h2 class="text-xl font-semibold">Disparos do Dia</h2>
-          <span class="bg-violet-500/20 text-violet-400 text-xs font-semibold px-3 py-1 rounded-xl">${disparosCidades.length} cidades</span>
+          <!-- Badges -->
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <span class="text-xs px-2 py-1 rounded-lg font-medium ${STATUS_COR[task.status]}">${task.status}</span>
+            <span class="text-xs px-2 py-1 rounded-lg font-medium ${PRIORIDADE_COR[task.prioridade]}">${task.prioridade}</span>
+          </div>
+          <!-- Seta -->
+          <i class="fas fa-chevron-right text-zinc-600 group-hover:text-zinc-400 text-xs flex-shrink-0"></i>
         </div>
-        <button onclick="limparCidades()" class="text-zinc-500 hover:text-red-400 text-sm flex items-center gap-2 px-4 py-2 rounded-xl hover:bg-red-500/10 transition-colors">
-          <i class="fas fa-trash-can"></i> Limpar
+      `;
+    }).join('');
+  }
+
+  function formatarData(str) {
+    if (!str || str === '—') return '—';
+    // Novo formato: já vem como dd/mm ou nome do mês
+    return str;
+  }
+
+  function abrirNovaDemanda() {
+    const hoje = new Date().toISOString().split('T')[0];
+    const [y, m, d] = hoje.split('-');
+    demandas.push({
+      titulo: '',
+      descricao: '',
+      notas: '',
+      status: 'A fazer',
+      prioridade: 'Média',
+      dataAdicao: `${d}/${m}/${y}`,
+      dataEntrega: '',
+      mesIncerto: false,
+      mesTexto: '',
+      subtarefas: []
+    });
+    saveDemandas();
+    abrirDemanda(demandas.length - 1);
+    renderDemandas();
+  }
+
+  function abrirDemanda(idx) {
+    demandaAbertaIdx = idx;
+    const d = demandas[idx];
+    document.getElementById('panel-titulo').value = d.titulo;
+    document.getElementById('panel-descricao').value = d.descricao || '';
+    document.getElementById('panel-notas').value = d.notas || '';
+    document.getElementById('panel-data-adicao').textContent = d.dataAdicao || '—';
+    // Carregar estado do seletor de data
+    diaAtual = d.diaEntrega || null;
+    mesAtual = d.mesEntrega || null;
+    mesIncertoAtual = d.mesIncerto || false;
+    mesIncertoIdx = d.mesIncertoIdx !== undefined ? d.mesIncertoIdx : new Date().getMonth();
+    atualizarSeletorData();
+    atualizarStatusBadge(d.status);
+    atualizarPrioridadeBadge(d.prioridade);
+    renderSubtarefas();
+    document.getElementById('demanda-panel').classList.add('open');
+    document.getElementById('panel-overlay').classList.add('open');
+    document.getElementById('panel-titulo').focus();
+  }
+
+  function fecharPainel() {
+    salvarPainel();
+    document.getElementById('demanda-panel').classList.remove('open');
+    document.getElementById('panel-overlay').classList.remove('open');
+    demandaAbertaIdx = null;
+    renderDemandas();
+  }
+
+  function atualizarStatusBadge(status) {
+    const el = document.getElementById('panel-status-badge');
+    el.textContent = status;
+    el.className = `px-3 py-1 rounded-lg text-xs font-semibold ${STATUS_COR[status]}`;
+  }
+  function atualizarPrioridadeBadge(prio) {
+    const el = document.getElementById('panel-prioridade-badge');
+    el.textContent = prio;
+    el.className = `px-3 py-1 rounded-lg text-xs font-semibold ${PRIORIDADE_COR[prio]}`;
+  }
+
+  function cycleStatus() {
+    if (demandaAbertaIdx === null) return;
+    const d = demandas[demandaAbertaIdx];
+    const idx = STATUS_CICLO.indexOf(d.status);
+    d.status = STATUS_CICLO[(idx + 1) % STATUS_CICLO.length];
+    atualizarStatusBadge(d.status);
+    autoSave();
+  }
+
+  function cyclePrioridade() {
+    if (demandaAbertaIdx === null) return;
+    const d = demandas[demandaAbertaIdx];
+    const idx = PRIORIDADE_CICLO.indexOf(d.prioridade);
+    d.prioridade = PRIORIDADE_CICLO[(idx + 1) % PRIORIDADE_CICLO.length];
+    atualizarPrioridadeBadge(d.prioridade);
+    autoSave();
+  }
+
+  // ======================== SELETOR DE DATA ========================
+  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  let diaAtual = null;
+  let mesAtual = null; // 1-12
+  let mesIncertoAtual = false;
+  let mesIncertoIdx = new Date().getMonth(); // 0-11
+
+  function atualizarSeletorData() {
+    const btnIncerto = document.getElementById('btn-mes-incerto');
+    const seletorData = document.getElementById('seletor-data');
+    const seletorIncerto = document.getElementById('seletor-mes-incerto');
+
+    if (mesIncertoAtual) {
+      btnIncerto.classList.add('bg-violet-600', 'text-white');
+      btnIncerto.classList.remove('bg-zinc-700', 'text-zinc-400');
+      seletorData.classList.add('hidden');
+      seletorIncerto.classList.remove('hidden');
+      document.getElementById('display-mes-incerto').textContent = MESES[mesIncertoIdx];
+    } else {
+      btnIncerto.classList.remove('bg-violet-600', 'text-white');
+      btnIncerto.classList.add('bg-zinc-700', 'text-zinc-400');
+      seletorData.classList.remove('hidden');
+      seletorIncerto.classList.add('hidden');
+      document.getElementById('display-dia').textContent = diaAtual !== null ? diaAtual : '—';
+      document.getElementById('display-mes').textContent = mesAtual !== null ? MESES[mesAtual - 1].substring(0,3) : '—';
+    }
+  }
+
+  function toggleMesIncerto() {
+    mesIncertoAtual = !mesIncertoAtual;
+    atualizarSeletorData();
+    autoSave();
+  }
+
+  function alterarDia(delta) {
+    if (diaAtual === null) diaAtual = new Date().getDate();
+    diaAtual = Math.max(1, Math.min(31, diaAtual + delta));
+    document.getElementById('display-dia').textContent = diaAtual;
+    autoSave();
+  }
+
+  function alterarMes(delta) {
+    if (mesAtual === null) mesAtual = new Date().getMonth() + 1;
+    mesAtual = ((mesAtual - 1 + delta + 12) % 12) + 1;
+    document.getElementById('display-mes').textContent = MESES[mesAtual - 1].substring(0,3);
+    autoSave();
+  }
+
+  function alterarMesIncerto(delta) {
+    mesIncertoIdx = (mesIncertoIdx + delta + 12) % 12;
+    document.getElementById('display-mes-incerto').textContent = MESES[mesIncertoIdx];
+    autoSave();
+  }
+
+  function limparData() {
+    diaAtual = null;
+    mesAtual = null;
+    mesIncertoIdx = new Date().getMonth();
+    atualizarSeletorData();
+    autoSave();
+  }
+
+  function getEntregaTexto() {
+    if (mesIncertoAtual) return MESES[mesIncertoIdx];
+    if (diaAtual && mesAtual) return `${String(diaAtual).padStart(2,'0')}/${String(mesAtual).padStart(2,'0')}`;
+    return '—';
+  }
+
+  function salvarPainel() {
+    if (demandaAbertaIdx === null) return;
+    const d = demandas[demandaAbertaIdx];
+    d.titulo = document.getElementById('panel-titulo').value;
+    d.descricao = document.getElementById('panel-descricao').value;
+    d.notas = document.getElementById('panel-notas').value;
+    d.mesIncerto = mesIncertoAtual;
+    d.mesIncertoIdx = mesIncertoIdx;
+    d.diaEntrega = diaAtual;
+    d.mesEntrega = mesAtual;
+    d.dataEntrega = getEntregaTexto();
+    saveDemandas();
+  }
+
+  function autoSave() {
+    clearTimeout(autoSaveTimer);
+    document.getElementById('save-indicator').textContent = 'Salvando...';
+    autoSaveTimer = setTimeout(() => {
+      salvarPainel();
+      document.getElementById('save-indicator').textContent = 'Salvo ✓';
+      setTimeout(() => {
+        document.getElementById('save-indicator').textContent = 'Salvo automaticamente';
+      }, 1500);
+    }, 300);
+  }
+
+  function deletarDemanda() {
+    if (demandaAbertaIdx === null) return;
+    demandas.splice(demandaAbertaIdx, 1);
+    saveDemandas();
+    document.getElementById('demanda-panel').classList.remove('open');
+    document.getElementById('panel-overlay').classList.remove('open');
+    demandaAbertaIdx = null;
+    renderDemandas();
+  }
+
+  // ======================== SUBTAREFAS ========================
+  function renderSubtarefas() {
+    if (demandaAbertaIdx === null) return;
+    const d = demandas[demandaAbertaIdx];
+    const container = document.getElementById('subtarefas-list');
+    if (!d.subtarefas || !d.subtarefas.length) {
+      container.innerHTML = '<p class="text-xs text-zinc-600 italic">Nenhuma subtarefa ainda.</p>';
+      return;
+    }
+    container.innerHTML = d.subtarefas.map((sub, i) => `
+      <div class="flex items-center gap-3 bg-zinc-800 px-4 py-3 rounded-xl group">
+        <input type="checkbox" id="sub-${i}" ${sub.concluida ? 'checked' : ''} onchange="toggleSubtarefa(${i})" class="accent-violet-500 w-4 h-4 flex-shrink-0">
+        <label for="sub-${i}" class="flex-1 text-sm cursor-pointer ${sub.concluida ? 'line-through text-zinc-500' : 'text-zinc-200'}">${sub.texto}</label>
+        <button onclick="removerSubtarefa(${i})" class="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-xs">
+          <i class="fas fa-xmark"></i>
         </button>
       </div>
-      <div class="flex gap-3 mb-6 items-end">
-        <div class="flex-1">
-          <label class="text-xs text-zinc-500 mb-1 block">Cidade</label>
-          <input id="inp-cidade" placeholder="Ex: Ponta Grossa" onkeydown="if(event.key==='Enter')adicionarCidade()"
-            class="w-full bg-zinc-800 rounded-2xl px-5 py-4 text-white outline-none focus:ring-2 focus:ring-violet-500">
-        </div>
-        <div class="w-48">
-          <label class="text-xs text-zinc-500 mb-1 block">Empresa</label>
-          <div class="relative">
-            <select id="inp-empresa" class="w-full appearance-none bg-zinc-800 rounded-2xl px-5 py-4 text-white outline-none focus:ring-2 focus:ring-violet-500 pr-10 cursor-pointer">
-              <option value="WebiFibra">WebiFibra</option>
-              <option value="DBUG">DBUG Telecom</option>
-            </select>
-            <div class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-zinc-400"><i class="fas fa-chevron-down text-xs"></i></div>
+    `).join('');
+  }
+
+  function adicionarSubtarefa() {
+    document.getElementById('nova-subtarefa-input').classList.remove('hidden');
+    document.getElementById('subtarefa-texto').focus();
+  }
+
+  function confirmarSubtarefa() {
+    const texto = document.getElementById('subtarefa-texto').value.trim();
+    if (!texto) return cancelarSubtarefa();
+    if (demandaAbertaIdx === null) return;
+    demandas[demandaAbertaIdx].subtarefas.push({ texto, concluida: false });
+    saveDemandas();
+    document.getElementById('subtarefa-texto').value = '';
+    document.getElementById('nova-subtarefa-input').classList.add('hidden');
+    renderSubtarefas();
+  }
+
+  function cancelarSubtarefa() {
+    document.getElementById('subtarefa-texto').value = '';
+    document.getElementById('nova-subtarefa-input').classList.add('hidden');
+  }
+
+  function subtarefaKeydown(e) {
+    if (e.key === 'Enter') confirmarSubtarefa();
+    if (e.key === 'Escape') cancelarSubtarefa();
+  }
+
+  function toggleSubtarefa(i) {
+    if (demandaAbertaIdx === null) return;
+    demandas[demandaAbertaIdx].subtarefas[i].concluida = !demandas[demandaAbertaIdx].subtarefas[i].concluida;
+    saveDemandas();
+    renderSubtarefas();
+    renderDemandas();
+  }
+
+  function removerSubtarefa(i) {
+    if (demandaAbertaIdx === null) return;
+    demandas[demandaAbertaIdx].subtarefas.splice(i, 1);
+    saveDemandas();
+    renderSubtarefas();
+    renderDemandas();
+  }
+
+  // ======================== DISPAROS ========================
+  let disparos = [];
+  let dragSrcId = null;
+
+  const EMPRESA_COR = {
+    'WebiFibra': { bg: 'bg-sky-500/10', text: 'text-sky-400', border: 'border-sky-500/20', dot: 'bg-sky-400' },
+    'DBUG':      { bg: 'bg-violet-500/10', text: 'text-violet-400', border: 'border-violet-500/20', dot: 'bg-violet-400' }
+  };
+  const EMPRESA_LABEL = { 'WebiFibra': 'WebiFibra', 'DBUG': 'DBUG Telecom' };
+
+  function loadDisparos() {
+    const saved = localStorage.getItem('disparos_v1');
+    disparos = saved ? JSON.parse(saved) : [];
+  }
+  function saveDisparos() {
+    localStorage.setItem('disparos_v1', JSON.stringify(disparos));
+  }
+
+  function addDisparo() {
+    const cidade = document.getElementById('nova-cidade').value.trim();
+    const empresa = document.getElementById('empresa-select').value;
+    if (!cidade) { document.getElementById('nova-cidade').focus(); return; }
+    disparos.push({ id: Date.now(), cidade, empresa });
+    document.getElementById('nova-cidade').value = '';
+    document.getElementById('nova-cidade').focus();
+    saveDisparos();
+    renderDisparos();
+  }
+
+  function removerDisparo(id) {
+    disparos = disparos.filter(d => d.id !== id);
+    saveDisparos();
+    renderDisparos();
+  }
+
+  function limparDisparos() {
+    if (!disparos.length) return;
+    disparos = [];
+    saveDisparos();
+    renderDisparos();
+  }
+
+  function renderDisparos() {
+    const container = document.getElementById('disparos-list');
+    const contador = document.getElementById('disparos-contador');
+    contador.textContent = `${disparos.length} disparo${disparos.length !== 1 ? 's' : ''}`;
+
+    if (!disparos.length) {
+      container.innerHTML = '<p class="text-zinc-500 italic text-sm text-center py-4">Nenhum disparo adicionado ainda.</p>';
+      return;
+    }
+
+    // Agrupar mantendo a ordem original (posição no array = ordem)
+    const grupos = {};
+    const ordemEmpresas = [];
+    disparos.forEach(d => {
+      if (!grupos[d.empresa]) { grupos[d.empresa] = []; ordemEmpresas.push(d.empresa); }
+      grupos[d.empresa].push(d);
+    });
+    const empresasUnicas = [...new Set(ordemEmpresas)];
+
+    container.innerHTML = empresasUnicas.map(empresa => {
+      const cor = EMPRESA_COR[empresa] || EMPRESA_COR['DBUG'];
+      const itens = grupos[empresa];
+      return `
+        <div>
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-2 h-2 rounded-full ${cor.dot}"></div>
+            <span class="text-xs font-semibold uppercase tracking-wider ${cor.text}">${EMPRESA_LABEL[empresa] || empresa}</span>
+            <span class="text-xs text-zinc-600">${itens.length} cidade${itens.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div class="space-y-2 ml-4" data-empresa="${empresa}">
+            ${itens.map((d, i) => `
+              <div class="disparo-item group flex items-center gap-3 ${cor.bg} border ${cor.border} px-5 py-3 rounded-2xl transition-all cursor-grab active:cursor-grabbing"
+                draggable="true"
+                data-id="${d.id}"
+                ondragstart="onDragStart(event, ${d.id})"
+                ondragover="onDragOver(event)"
+                ondrop="onDrop(event, ${d.id})"
+                ondragend="onDragEnd(event)">
+                <!-- Handle drag -->
+                <i class="fas fa-grip-vertical text-zinc-600 group-hover:text-zinc-400 text-xs flex-shrink-0 transition-colors"></i>
+                <!-- Número de ordem -->
+                <span class="text-xs font-bold ${cor.text} w-6 text-center flex-shrink-0">${i + 1}°</span>
+                <!-- Cidade -->
+                <span class="flex-1 font-medium text-sm text-zinc-200">${d.cidade}</span>
+                <!-- Remover -->
+                <button onclick="removerDisparo(${d.id})" class="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-red-400 transition-all text-xs">
+                  <i class="fas fa-xmark"></i>
+                </button>
+              </div>
+            `).join('')}
           </div>
         </div>
-        <button onclick="adicionarCidade()" class="bg-violet-600 hover:bg-violet-500 px-8 py-4 rounded-2xl transition-colors"><i class="fas fa-plus"></i></button>
-      </div>
-      <div class="space-y-6">${cidadesHTML||'<p class="text-zinc-600 italic text-sm text-center py-4">Nenhuma cidade adicionada ainda.</p>'}</div>
-    </div>`;
-}
+      `;
+    }).join('');
+  }
 
-// ======================== CONSULTOR ========================
-function renderConsultor(c){
-  const dD=dadosDia[c]?.dados_dbug||{};
-  const dW=dadosDia[c]?.dados_webi||{};
-  const tD=Object.values(dD).reduce((a,b)=>a+b,0);
-  const tW=Object.values(dW).reduce((a,b)=>a+b,0);
+  // Drag and Drop
+  function onDragStart(e, id) {
+    dragSrcId = id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.currentTarget.style.opacity = '0.4';
+  }
 
-  const chave=`${c}_${canalAtivo}`;
-  if(!variacoes[chave])variacoes[chave]={};
-  const msgs=getMsgs(c,canalAtivo);
-  const dados=canalAtivo==='dbug'?dD:dW;
+  function onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    e.currentTarget.style.borderStyle = 'dashed';
+  }
 
-  const msgCards=msgs.map((msg,i)=>{
-    const vi=variacoes[chave][i]||0;
-    const total=msg.variacoes.length;
-    const ord=['1ª','2ª','3ª','4ª','5ª','6ª','7ª','8ª','9ª','10ª'][vi]||`${vi+1}ª`;
-    const txt=msg.variacoes[vi];
-    const cnt=dados[`m${i}`]||0;
-    return`<div class="bg-zinc-800 rounded-2xl p-5 space-y-3" id="card-${c}-${i}">
-      <div class="flex items-center justify-between">
-        <span class="text-sm font-semibold text-zinc-200">${msg.titulo}</span>
-        <div class="flex items-center gap-2">
-          <span class="text-xs text-zinc-500 bg-zinc-700 px-2 py-1 rounded-lg">${cnt}x hoje</span>
-          <span class="text-xs text-violet-400 font-medium bg-violet-500/20 px-2 py-1 rounded-lg">${ord} de ${total}</span>
+  function onDrop(e, targetId) {
+    e.preventDefault();
+    if (dragSrcId === targetId) return;
+    const srcIdx = disparos.findIndex(d => d.id === dragSrcId);
+    const tgtIdx = disparos.findIndex(d => d.id === targetId);
+    if (disparos[srcIdx].empresa !== disparos[tgtIdx].empresa) {
+      renderDisparos();
+      return;
+    }
+    const [moved] = disparos.splice(srcIdx, 1);
+    disparos.splice(tgtIdx, 0, moved);
+    saveDisparos();
+    renderDisparos();
+  }
+
+  function onDragEnd(e) {
+    dragSrcId = null;
+    renderDisparos();
+  }
+
+  // ======================== MENSAGENS DE DISPARO ========================
+  // Estrutura: { canal: { msgIdx: variacaoAtual } }
+  let variacoes = { whatsapp_dbug: {}, whatsapp_webi: {}, email: {}, sms: {} };
+  let contadoresDia = { whatsapp: 0, email: 0, sms: 0 };
+  let historicoDisparos = [];
+  let abaAtiva = 'whatsapp_dbug';
+
+  // ---- BANCO DE MENSAGENS ----
+  function msgs(empresa) {
+    const e = empresa === 'webi' ? 'WebiFibra' : 'DBUG Telecom';
+    return [
+      {
+        titulo: 'Mensagem 1 — Apresentação',
+        variacoes: [
+          `Olá, NOME! Tudo bem?\n\n*Sou o Fábio, da ${e}.*\n\nEstou entrando em contato para agendarmos a retirada do equipamento que ficou com você após o cancelamento do serviço.\n\n*Conseguimos marcar?* 😊`,
+          `Oi, NOME! Como vai?\n\n*Meu nome é Fábio, da ${e}.*\n\nEstou passando para tratar sobre a retirada do equipamento que permanece com você desde o cancelamento do contrato.\n\n*Podemos agendar um horário?* 😊`,
+          `Olá, NOME! Tudo certo?\n\n*Aqui é o Fábio, da ${e}.*\n\nEntrei em contato para conversarmos sobre a devolução do equipamento cedido durante o período do seu contrato conosco.\n\n*Quando seria um bom momento para a retirada?* 😊`,
+          `Boa noite, NOME!\n\n*Sou o Fábio da ${e}.*\n\nEstou entrando em contato pois ainda temos um equipamento para retirar no seu endereço, referente ao contrato encerrado.\n\n*Podemos combinar isso juntos?* 😊`,
+          `Olá, NOME! Tudo bem por aí?\n\n*Fábio aqui, da equipe ${e}.*\n\nPreciso agendar a retirada do equipamento que ficou com você após o encerramento do serviço.\n\n*Me diz um horário que funciona pra você!* 😊`,
+          `Oi, NOME! Boa noite.\n\n*Aqui é o Fábio, da ${e}.*\n\nPassando para tratar da retirada do nosso equipamento que ainda está no seu endereço desde o cancelamento.\n\n*Conseguimos resolver isso essa semana?* 😊`,
+          `Olá, NOME!\n\n*Fábio da ${e} por aqui.*\n\nVim falar sobre a devolução do equipamento que ficou com você após o encerramento do contrato — é um processo simples e rápido.\n\n*Quando posso passar?* 😊`,
+          `Boa noite, NOME! Tudo bem?\n\n*Sou o Fábio, da ${e}.*\n\nEstou em contato para alinharmos a retirada do equipamento que ainda consta no seu endereço.\n\n*Qual o melhor horário pra você?* 😊`,
+          `Oi, NOME! Como está?\n\n*Aqui é o Fábio, da ${e}.*\n\nGostaria de agendar a retirada do equipamento que permaneceu com você após o cancelamento do serviço.\n\n*Podemos marcar?* 😊`,
+          `Olá, NOME! Tudo certo?\n\n*Fábio da ${e} aqui.*\n\nVim tratar de um ponto pendente: a retirada do equipamento que ficou com você quando o contrato foi encerrado.\n\n*Me chama aqui para agendarmos!* 😊`,
+        ]
+      },
+      {
+        titulo: 'Mensagem 2 — Direta',
+        variacoes: [
+          `Oi, NOME!\n\n*Ainda não conseguimos agendar a retirada do seu equipamento ${e}.*\n\nPrecisa de algum dia ou horário específico? É só me falar.`,
+          `Olá, NOME!\n\n*A retirada do equipamento ainda está pendente.*\n\nMe diz um horário que funciona pra você e a gente resolve rapidinho.`,
+          `Oi, NOME!\n\n*Passando para verificar sobre o equipamento da ${e} que ainda não foi retirado.*\n\nQualquer dificuldade de horário, me avisa que buscamos uma solução.`,
+          `Olá, NOME!\n\n*Ainda temos um equipamento a retirar no seu endereço.*\n\nÉ rápido e simples — me diz quando posso passar.`,
+          `Oi, NOME!\n\n*A retirada do equipamento ${e} ainda está em aberto.*\n\nSe tiver alguma restrição de horário ou dia, me fala que a gente se adapta.`,
+        ]
+      },
+      {
+        titulo: 'Mensagem 3 — Direta',
+        variacoes: [
+          `Boa noite, NOME.\n\n*Passando para reforçar sobre o equipamento pendente.*\n\nA retirada evita que a situação avance para cobrança — ainda dá tempo de resolver de forma simples.\n\n*Me chama aqui!*`,
+          `Boa noite, NOME.\n\n*O equipamento da ${e} ainda está pendente de retirada.*\n\nResolver agora evita que isso vire uma cobrança futura — ainda estamos em tempo.\n\n*É só me chamar.*`,
+          `Boa noite, NOME.\n\n*Já são algumas tentativas de contato sobre o equipamento.*\n\nQuero evitar que isso se torne um problema maior pra você — a solução ainda é simples.\n\n*Me responde aqui.*`,
+          `Boa noite, NOME.\n\n*O equipamento da ${e} segue no seu endereço e precisa ser retirado.*\n\nQuanto antes resolvermos, melhor pra ambos os lados.\n\n*Me chama!*`,
+          `Boa noite, NOME.\n\n*Reforçando sobre a retirada do equipamento que ainda está pendente.*\n\nAinda estamos na fase de agendamento — evite que isso avance para cobrança.\n\n*Me fala quando posso passar.*`,
+        ]
+      },
+      {
+        titulo: 'Mensagem 4 — Ponte',
+        variacoes: [
+          `Boa noite, NOME.\n\n*Já tentei te contatar algumas vezes sobre o equipamento da ${e}.*\n\nQuero entender se tem algo que está impedindo a retirada — posso te ajudar a encontrar a melhor solução.\n\n*Como você prefere resolver?*`,
+          `Boa noite, NOME.\n\n*Já tentamos entrar em contato algumas vezes, mas ainda não conseguimos resolver.*\n\nSe tiver alguma dificuldade ou dúvida sobre o processo, estou aqui para ajudar.\n\n*Como posso facilitar isso pra você?*`,
+          `Boa noite, NOME.\n\n*Percebo que ainda não conseguimos alinhar a retirada do equipamento.*\n\nSe tiver qualquer impedimento, me conta — a gente busca uma alternativa juntos.\n\n*O que está dificultando?*`,
+          `Boa noite, NOME.\n\n*Estou tentando resolver isso da forma mais tranquila possível.*\n\nSe houver algo que esteja impedindo a devolução, me fala abertamente — estou aqui para ajudar.\n\n*Como prefere encaminhar?*`,
+          `Boa noite, NOME.\n\n*Já são algumas tentativas de contato sem retorno.*\n\nQuero entender sua situação antes que o caso precise seguir outro caminho.\n\n*Me conta o que está acontecendo.*`,
+        ]
+      },
+      {
+        titulo: 'Mensagem 5 — ULTIMATO',
+        variacoes: [
+          `Olá, NOME.\n\n*O equipamento da ${e} segue pendente e o prazo para regularização está se encerrando.*\n\nA partir daqui, o caso será encaminhado para cobrança formal com multa contratual.\n\n*Ainda podemos resolver agora — é só responder.*`,
+          `Olá, NOME.\n\n*O prazo para devolução do equipamento está chegando ao fim.*\n\nCaso não haja retorno, o processo seguirá para cobrança com os encargos previstos em contrato.\n\n*Ainda dá tempo de resolver — me responde.*`,
+          `Olá, NOME.\n\n*Estamos encerrando o prazo para regularização do equipamento pendente.*\n\nA partir desta etapa, o caso é encaminhado formalmente com multa contratual inclusa.\n\n*Resolva agora e evite complicações.*`,
+        ]
+      },
+      {
+        titulo: 'Mensagem 6 — VEREDITO',
+        variacoes: [
+          `Boa noite, NOME.\n\n*Estamos próximos de encerrar nossas tentativas de contato.*\n\nO não retorno resultará em cobrança formal do equipamento. Se preferir negociar, esta é a hora.\n\n*Como quer prosseguir?*`,
+          `Boa noite, NOME.\n\n*Chegamos a uma etapa decisiva sobre o equipamento da ${e}.*\n\nA ausência de retorno levará o caso à cobrança formal. Se quiser resolver antes disso, me responde agora.\n\n*Como prefere encaminhar?*`,
+          `Boa noite, NOME.\n\n*Estamos encerrando o ciclo de contato antes do encaminhamento formal.*\n\nAinda é possível resolver de forma simples — mas preciso de um retorno seu agora.\n\n*Como quer proceder?*`,
+        ]
+      },
+      {
+        titulo: 'Mensagem 7 — DESFECHO',
+        variacoes: [
+          `Boa noite, NOME.\n\n*Encerramos nossas tentativas de contato referente ao equipamento da ${e}.*\n\nCaso queira regularizar a situação antes que o processo siga seu curso, este é o momento.\n\n*Ficamos à disposição.*`,
+          `Boa noite, NOME.\n\n*Informamos que encerramos o ciclo de tentativas de contato sobre o equipamento pendente.*\n\nSe ainda tiver interesse em resolver antes do encaminhamento definitivo, estamos disponíveis.\n\n*A decisão é sua.*`,
+          `Boa noite, NOME.\n\n*Este é nosso último contato referente ao equipamento da ${e}.*\n\nA partir daqui, o caso segue seu curso internamente. Se quiser evitar isso, ainda há tempo.\n\n*Ficamos à disposição para uma última conversa.*`,
+        ]
+      },
+    ];
+  }
+
+  const MENSAGENS = {
+    whatsapp_dbug: msgs('dbug'),
+    whatsapp_webi: msgs('webi'),
+    email: [
+      { titulo: 'E-mail 1 — Apresentação', variacoes: [`// E-mail 1 — preencha aqui`, `// Variação 2`, `// Variação 3`, `// Variação 4`, `// Variação 5`] },
+    ],
+    sms: [
+      { titulo: 'SMS 1 — Apresentação', variacoes: [`// SMS 1 — preencha aqui`, `// Variação 2`, `// Variação 3`, `// Variação 4`, `// Variação 5`] },
+    ]
+  };
+
+  function loadMensagensData() {
+    const v = localStorage.getItem('variacoes_v1');
+    if (v) variacoes = JSON.parse(v);
+    const c = localStorage.getItem('contadores_dia');
+    const diaKey = new Date().toDateString();
+    const savedDia = localStorage.getItem('contadores_dia_key');
+    if (savedDia === diaKey && c) {
+      contadoresDia = JSON.parse(c);
+    } else {
+      // Novo dia: salva o dia anterior no histórico antes de resetar
+      if (c && savedDia) {
+        const prev = JSON.parse(c);
+        if (prev.whatsapp > 0 || prev.email > 0 || prev.sms > 0) {
+          const hist = JSON.parse(localStorage.getItem('hist_disparos') || '[]');
+          hist.unshift({ data: savedDia, ...prev });
+          if (hist.length > 60) hist.pop();
+          localStorage.setItem('hist_disparos', JSON.stringify(hist));
+        }
+      }
+      contadoresDia = { whatsapp: 0, email: 0, sms: 0 };
+      localStorage.setItem('contadores_dia_key', diaKey);
+    }
+    const h = localStorage.getItem('hist_disparos');
+    historicoDisparos = h ? JSON.parse(h) : [];
+  }
+
+  function saveMensagensData() {
+    localStorage.setItem('variacoes_v1', JSON.stringify(variacoes));
+    localStorage.setItem('contadores_dia', JSON.stringify(contadoresDia));
+  }
+
+  function abrirModalMensagens() {
+    document.getElementById('msg-modal').classList.remove('hidden');
+    trocarAba(abaAtiva);
+  }
+
+  function fecharModalMensagens() {
+    document.getElementById('msg-modal').classList.add('hidden');
+  }
+
+  function trocarAba(canal) {
+    abaAtiva = canal;
+    const abas = ['whatsapp_dbug', 'whatsapp_webi', 'email', 'sms'];
+    abas.forEach(c => {
+      const btn = document.getElementById(`tab-${c}`);
+      if (!btn) return;
+      if (c === canal) {
+        btn.classList.add('bg-violet-600', 'text-white');
+        btn.classList.remove('bg-zinc-800', 'text-zinc-400');
+        const sp = btn.querySelector('span');
+        if (sp) sp.className = 'bg-white/20 text-white text-xs px-2 py-0.5 rounded-lg';
+      } else {
+        btn.classList.remove('bg-violet-600', 'text-white');
+        btn.classList.add('bg-zinc-800', 'text-zinc-400');
+        const sp = btn.querySelector('span');
+        if (sp) sp.className = 'bg-zinc-700 text-zinc-300 text-xs px-2 py-0.5 rounded-lg';
+      }
+    });
+    renderMensagens(canal);
+  }
+
+  function renderMensagens(canal) {
+    const lista = document.getElementById('msg-lista');
+    const msgs = MENSAGENS[canal] || [];
+    if (!msgs.length) {
+      lista.innerHTML = '<p class="text-zinc-500 italic text-sm">Nenhuma mensagem cadastrada.</p>';
+      return;
+    }
+    lista.innerHTML = msgs.map((msg, i) => {
+      const varIdx = (variacoes[canal] && variacoes[canal][i]) || 0;
+      const totalVar = msg.variacoes.length;
+      const texto = msg.variacoes[varIdx];
+      const ordinal = ['1ª','2ª','3ª','4ª','5ª','6ª','7ª','8ª','9ª','10ª'][varIdx] || `${varIdx+1}ª`;
+      return `
+        <div class="bg-zinc-800 rounded-2xl p-5 space-y-3" id="msg-card-${canal}-${i}">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-semibold text-zinc-200">${msg.titulo}</span>
+            <span class="text-xs text-violet-400 font-medium bg-violet-500/20 px-2 py-1 rounded-lg">${ordinal} Variação de ${totalVar}</span>
+          </div>
+          <p class="text-xs text-zinc-400 whitespace-pre-wrap leading-relaxed">${texto}</p>
+          <div class="flex gap-2">
+            <button onclick="copiarMensagem('${canal}', ${i})"
+              class="flex-1 bg-zinc-700 hover:bg-emerald-600 text-white text-sm font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
+              <i class="fas fa-copy"></i> Copiar e avançar variação
+            </button>
+            <button onclick="decrementarContador('${canal}')" title="Desfazer 1 disparo"
+              class="bg-zinc-700 hover:bg-red-500/30 text-zinc-400 hover:text-red-400 px-4 py-3 rounded-xl transition-colors text-sm">
+              <i class="fas fa-minus"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function copiarMensagem(canal, msgIdx) {
+    if (!variacoes[canal]) variacoes[canal] = {};
+    const varIdx = variacoes[canal][msgIdx] || 0;
+    const texto = MENSAGENS[canal][msgIdx].variacoes[varIdx];
+    navigator.clipboard.writeText(texto).catch(() => {});
+    const totalVar = MENSAGENS[canal][msgIdx].variacoes.length;
+    variacoes[canal][msgIdx] = (varIdx + 1) % totalVar;
+    // Incrementa contador — WhatsApp DBUG e WebiFibra somam no mesmo contador de whatsapp
+    const canalContador = (canal === 'whatsapp_dbug' || canal === 'whatsapp_webi') ? 'whatsapp' : canal;
+    contadoresDia[canalContador]++;
+    saveMensagensData();
+    atualizarContadoresUI();
+    renderMensagens(canal);
+    const card = document.getElementById(`msg-card-${canal}-${msgIdx}`);
+    if (card) { card.classList.add('copy-flash'); setTimeout(() => card.classList.remove('copy-flash'), 400); }
+  }
+
+  function atualizarContadoresUI() {
+    const total = contadoresDia.whatsapp + contadoresDia.email + contadoresDia.sms;
+    document.getElementById('disparos-contador').textContent = `${total} disparo${total !== 1 ? 's' : ''}`;
+    document.getElementById('cnt-whatsapp').textContent = contadoresDia.whatsapp;
+    if (document.getElementById('cnt-whatsapp-webi')) document.getElementById('cnt-whatsapp-webi').textContent = '';
+    document.getElementById('cnt-email').textContent = contadoresDia.email;
+    document.getElementById('cnt-sms').textContent = contadoresDia.sms;
+  }
+
+  function decrementarContador(canal) {
+    const c = (canal === 'whatsapp_dbug' || canal === 'whatsapp_webi') ? 'whatsapp' : canal;
+    if (contadoresDia[c] > 0) contadoresDia[c]--;
+    saveMensagensData();
+    atualizarContadoresUI();
+    renderHistoricoDisparos();
+  }
+
+  // ======================== HISTÓRICO DE DISPAROS ========================
+  function abrirHistoricoDisparos() {
+    document.getElementById('hist-modal').classList.remove('hidden');
+    renderHistoricoDisparos();
+  }
+
+  function fecharHistoricoDisparos() {
+    document.getElementById('hist-modal').classList.add('hidden');
+  }
+
+  function renderHistoricoDisparos() {
+    const container = document.getElementById('hist-lista');
+    // Dia de hoje no topo
+    const hoje = contadoresDia;
+    const totalHoje = hoje.whatsapp + hoje.email + hoje.sms;
+    let html = `
+      <div class="bg-violet-500/10 border border-violet-500/20 rounded-2xl p-4">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-semibold text-violet-400 uppercase tracking-wider">Hoje</span>
+          <span class="text-sm font-bold text-violet-400">${totalHoje} disparos</span>
+        </div>
+        <div class="flex gap-4 text-xs text-zinc-400">
+          <span><i class="fab fa-whatsapp text-emerald-400 mr-1"></i>${hoje.whatsapp}</span>
+          <span><i class="fas fa-envelope text-sky-400 mr-1"></i>${hoje.email}</span>
+          <span><i class="fas fa-comment-sms text-amber-400 mr-1"></i>${hoje.sms}</span>
         </div>
       </div>
-      <p class="text-xs text-zinc-400 whitespace-pre-wrap leading-relaxed">${txt}</p>
-      <div class="flex gap-2">
-        <button onclick="copiarMsg('${c}',${i})"
-          class="flex-1 bg-zinc-700 hover:bg-emerald-600 text-white text-sm font-medium py-3 rounded-xl flex items-center justify-center gap-2 transition-colors">
-          <i class="fas fa-copy"></i> Copiar e avançar variação
-        </button>
-        <button onclick="decrementar('${c}',${i})" class="bg-zinc-700 hover:bg-red-500/20 text-zinc-400 hover:text-red-400 px-4 py-3 rounded-xl transition-colors">
-          <i class="fas fa-minus text-xs"></i>
-        </button>
-      </div>
-    </div>`;
-  }).join('');
+    `;
+    if (!historicoDisparos.length) {
+      html += '<p class="text-zinc-600 text-sm italic text-center pt-4">Sem histórico anterior.</p>';
+    } else {
+      html += historicoDisparos.map(dia => {
+        const total = dia.whatsapp + dia.email + dia.sms;
+        const d = new Date(dia.data);
+        const label = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+        return `
+          <div class="bg-zinc-800 rounded-2xl p-4">
+            <div class="flex justify-between items-center mb-2">
+              <span class="text-xs text-zinc-500">${label}</span>
+              <span class="text-sm font-bold text-zinc-300">${total} disparos</span>
+            </div>
+            <div class="flex gap-4 text-xs text-zinc-500">
+              <span><i class="fab fa-whatsapp text-emerald-500/60 mr-1"></i>${dia.whatsapp}</span>
+              <span><i class="fas fa-envelope text-sky-500/60 mr-1"></i>${dia.email}</span>
+              <span><i class="fas fa-comment-sms text-amber-500/60 mr-1"></i>${dia.sms}</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    container.innerHTML = html;
+  }
 
-  return`
-    <div class="grid grid-cols-3 gap-4 mb-8">
-      <div class="bg-zinc-900 rounded-3xl p-6 text-center">
-        <p class="text-xs text-zinc-500 mb-2">Total Hoje</p>
-        <p class="text-5xl font-bold text-violet-400">${tD+tW}</p>
-      </div>
-      <div class="bg-zinc-900 rounded-3xl p-6">
-        <p class="text-xs text-violet-400 font-semibold mb-2">DBUG Telecom — ${tD}</p>
-        <p class="text-xs text-zinc-500 leading-relaxed">${LABELS.map((l,i)=>dD[`m${i}`]>0?`${dD[`m${i}`]}x ${l}`:null).filter(Boolean).join(' · ')||'—'}</p>
-      </div>
-      <div class="bg-zinc-900 rounded-3xl p-6">
-        <p class="text-xs text-sky-400 font-semibold mb-2">WebiFibra — ${tW}</p>
-        <p class="text-xs text-zinc-500 leading-relaxed">${LABELS.map((l,i)=>dW[`m${i}`]>0?`${dW[`m${i}`]}x ${l}`:null).filter(Boolean).join(' · ')||'—'}</p>
-      </div>
-    </div>
-    <div class="bg-zinc-900 rounded-3xl p-8">
-      <div class="flex items-center justify-between mb-6">
-        <h2 class="text-xl font-semibold">Mensagens — ${NOMES[c]}</h2>
-        <div class="flex gap-2">
-          <button onclick="trocarCanal('dbug')" id="btn-dbug"
-            class="${canalAtivo==='dbug'?'bg-violet-600 text-white':'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'} px-4 py-2 rounded-xl text-sm font-medium transition-colors">
-            WhatsApp DBUG <span class="ml-1 text-xs opacity-70">${tD}</span>
-          </button>
-          <button onclick="trocarCanal('webi')" id="btn-webi"
-            class="${canalAtivo==='webi'?'bg-sky-600 text-white':'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'} px-4 py-2 rounded-xl text-sm font-medium transition-colors">
-            WhatsApp WebiFibra <span class="ml-1 text-xs opacity-70">${tW}</span>
-          </button>
-        </div>
-      </div>
-      <div class="space-y-4">${msgCards}</div>
-    </div>`;
-}
-
-// ======================== COPIAR / DECREMENTAR ========================
-async function copiarMsg(c,i){
-  const chave=`${c}_${canalAtivo}`;
-  if(!variacoes[chave])variacoes[chave]={};
-  const vi=variacoes[chave][i]||0;
-  const msgs=getMsgs(c,canalAtivo);
-  navigator.clipboard.writeText(msgs[i].variacoes[vi]).catch(()=>{});
-  variacoes[chave][i]=(vi+1)%msgs[i].variacoes.length;
-  localStorage.setItem('var_v2',JSON.stringify(variacoes));
-  // incrementar no supabase
-  const campo=canalAtivo==='dbug'?'dados_dbug':'dados_webi';
-  const dados={...(dadosDia[c]?.[campo]||{})};
-  dados[`m${i}`]=(dados[`m${i}`]||0)+1;
-  dadosDia[c][campo]=dados;
-  await sbPatch('Tabela2',`id=eq.${dadosDia[c].id}`,{[campo]:dados});
-  renderConteudo();
-  // flash
-  setTimeout(()=>{
-    const el=document.getElementById(`card-${c}-${i}`);
-    if(el){el.classList.add('copy-flash');setTimeout(()=>el.classList.remove('copy-flash'),400);}
-  },10);
-}
-
-async function decrementar(c,i){
-  const campo=canalAtivo==='dbug'?'dados_dbug':'dados_webi';
-  const dados={...(dadosDia[c]?.[campo]||{})};
-  if((dados[`m${i}`]||0)<=0)return;
-  dados[`m${i}`]--;
-  dadosDia[c][campo]=dados;
-  await sbPatch('Tabela2',`id=eq.${dadosDia[c].id}`,{[campo]:dados});
-  renderConteudo();
-}
-
-function trocarCanal(canal){
-  canalAtivo=canal;
-  renderConteudo();
-}
-
-// ======================== CIDADES ========================
-function adicionarCidade(){
-  const cidade=document.getElementById('inp-cidade')?.value.trim();
-  const empresa=document.getElementById('inp-empresa')?.value;
-  if(!cidade)return;
-  disparosCidades.push({id:Date.now().toString(),cidade,empresa});
-  localStorage.setItem('cidades_v2',JSON.stringify(disparosCidades));
-  document.getElementById('inp-cidade').value='';
-  renderConteudo();
-}
-function removerCidade(id){
-  disparosCidades=disparosCidades.filter(d=>d.id!==id);
-  localStorage.setItem('cidades_v2',JSON.stringify(disparosCidades));
-  renderConteudo();
-}
-function limparCidades(){
-  disparosCidades=[];
-  localStorage.setItem('cidades_v2',JSON.stringify(disparosCidades));
-  renderConteudo();
-}
-function onDS(e,id){dragId=id;e.currentTarget.style.opacity='0.4';}
-function onDO(e){e.preventDefault();}
-function onDP(e,tid){
-  e.preventDefault();if(dragId===tid)return;
-  const si=disparosCidades.findIndex(d=>d.id===dragId);
-  const ti=disparosCidades.findIndex(d=>d.id===tid);
-  if(disparosCidades[si].empresa!==disparosCidades[ti].empresa){renderConteudo();return;}
-  const[m]=disparosCidades.splice(si,1);
-  disparosCidades.splice(ti,0,m);
-  localStorage.setItem('cidades_v2',JSON.stringify(disparosCidades));
-  renderConteudo();
-}
-
-// ======================== HISTÓRICO ========================
-async function abrirHistorico(){document.getElementById('hist-modal').classList.remove('hidden');await renderHistorico();}
-function fecharHistorico(){document.getElementById('hist-modal').classList.add('hidden');}
-async function filtrarHist(f){
-  histFiltro=f;
-  ['todos','duda','fabio','henrique'].forEach(k=>{
-    const b=document.getElementById(`hf-${k}`);
-    if(b)b.className=k===f?'px-3 py-1.5 rounded-xl text-xs font-medium bg-violet-600 text-white':'px-3 py-1.5 rounded-xl text-xs font-medium bg-zinc-800 text-zinc-400 hover:bg-zinc-700';
-  });
-  await renderHistorico();
-}
-async function renderHistorico(){
-  const c=document.getElementById('hist-lista');
-  c.innerHTML='<p class="text-zinc-500 text-sm text-center">Carregando...</p>';
-  const f=histFiltro==='todos'?'':'consultor=eq.'+histFiltro+'&';
-  const dados=await sbGet(`Tabela2?${f}order=data.desc&limit=60`);
-  if(!Array.isArray(dados)||!dados.length){c.innerHTML='<p class="text-zinc-600 text-sm italic text-center">Sem histórico ainda.</p>';return;}
-  c.innerHTML=dados.map(dia=>{
-    const d=dia.dados_dbug||{};const w=dia.dados_webi||{};
-    const tD=Object.values(d).reduce((a,b)=>a+b,0);
-    const tW=Object.values(w).reduce((a,b)=>a+b,0);
-    return`<div class="bg-zinc-800 rounded-2xl p-5">
-      <div class="flex justify-between items-center mb-3">
-        <div><span class="text-sm font-semibold">${dia.data}</span><span class="text-xs text-zinc-500 ml-2">${NOMES[dia.consultor]||dia.consultor}</span></div>
-        <span class="text-lg font-bold text-violet-400">${tD+tW} disparos</span>
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div class="bg-zinc-700/50 rounded-xl p-3">
-          <p class="text-xs text-violet-400 font-semibold mb-2">DBUG — ${tD}</p>
-          ${LABELS.map((l,i)=>d[`m${i}`]>0?`<div class="flex justify-between text-xs text-zinc-400 py-0.5"><span>${l}</span><span class="font-bold text-zinc-300">${d[`m${i}`]}</span></div>`:'').join('')||'<p class="text-xs text-zinc-600">—</p>'}
-        </div>
-        <div class="bg-zinc-700/50 rounded-xl p-3">
-          <p class="text-xs text-sky-400 font-semibold mb-2">WebiFibra — ${tW}</p>
-          ${LABELS.map((l,i)=>w[`m${i}`]>0?`<div class="flex justify-between text-xs text-zinc-400 py-0.5"><span>${l}</span><span class="font-bold text-zinc-300">${w[`m${i}`]}</span></div>`:'').join('')||'<p class="text-xs text-zinc-600">—</p>'}
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-document.getElementById('hist-modal').addEventListener('click',function(e){if(e.target===this)fecharHistorico();});
-window.onload=()=>carregarDados();
+  // ======================== INIT ========================
+  window.onload = () => {
+    loadData();
+    loadDemandas();
+    loadDisparos();
+    loadMensagensData();
+    const hoje = new Date().toDateString();
+    const ultimoDia = localStorage.getItem('pausas_dia');
+    if (ultimoDia !== hoje) {
+      localStorage.removeItem('pausas_v1');
+      localStorage.setItem('pausas_dia', hoje);
+    } else {
+      loadPausas();
+    }
+    renderBadgeMes();
+    renderMetrics();
+    renderMonthlyChart();
+    updatePauseUI();
+    renderDemandas();
+    renderDisparos();
+    atualizarContadoresUI();
+  };
 </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js');
+      });
+    }
+  </script>
 </body>
 </html>
