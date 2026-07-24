@@ -161,7 +161,7 @@ async function carregarDados(){
     if(Array.isArray(res)&&res.length>0){
       dadosDia[c]=res[0];
     }else{
-      const novo={consultor:c,data:hoje,dados_dbug:{m0:0,m1:0,m2:0,m3:0,m4:0,m5:0,m6:0},dados_webi:{m0:0,m1:0,m2:0,m3:0,m4:0,m5:0,m6:0}};
+      const novo={consultor:c,data:hoje,dados_dbug:{m0:0,m1:0,m2:0,m3:0,m4:0,m5:0,m6:0},dados_webifibra:{m0:0,m1:0,m2:0,m3:0,m4:0,m5:0,m6:0}};
       const criado=await sbPost('disparos',novo);
       dadosDia[c]=Array.isArray(criado)?criado[0]:criado;
     }
@@ -172,12 +172,12 @@ async function carregarDados(){
 function totalC(c){
   if(!dadosDia[c])return 0;
   const d=dadosDia[c].dados_dbug||{};
-  const w=dadosDia[c].dados_webi||{};
+  const w=dadosDia[c].dados_webifibra||{};
   return Object.values(d).reduce((a,b)=>a+b,0)+Object.values(w).reduce((a,b)=>a+b,0);
 }
 function totalCan(c,can){
   if(!dadosDia[c])return 0;
-  const d=can==='dbug'?(dadosDia[c].dados_dbug||{}):(dadosDia[c].dados_webi||{});
+  const d=can==='dbug'?(dadosDia[c].dados_dbug||{}):(dadosDia[c].dados_webifibra||{});
   return Object.values(d).reduce((a,b)=>a+b,0);
 }
 
@@ -280,7 +280,7 @@ function renderDashboard(){
 // ======================== CONSULTOR ========================
 function renderConsultor(c){
   const dD=dadosDia[c]?.dados_dbug||{};
-  const dW=dadosDia[c]?.dados_webi||{};
+  const dW=dadosDia[c]?.dados_webifibra||{};
   const tD=Object.values(dD).reduce((a,b)=>a+b,0);
   const tW=Object.values(dW).reduce((a,b)=>a+b,0);
 
@@ -359,7 +359,7 @@ async function copiarMsg(c,i){
   variacoes[chave][i]=(vi+1)%msgs[i].variacoes.length;
   localStorage.setItem('var_v2',JSON.stringify(variacoes));
   // incrementar no supabase
-  const campo=canalAtivo==='dbug'?'dados_dbug':'dados_webi';
+  const campo=canalAtivo==='dbug'?'dados_dbug':'dados_webifibra';
   const dados={...(dadosDia[c]?.[campo]||{})};
   dados[`m${i}`]=(dados[`m${i}`]||0)+1;
   dadosDia[c][campo]=dados;
@@ -373,7 +373,7 @@ async function copiarMsg(c,i){
 }
 
 async function decrementar(c,i){
-  const campo=canalAtivo==='dbug'?'dados_dbug':'dados_webi';
+  const campo=canalAtivo==='dbug'?'dados_dbug':'dados_webifibra';
   const dados={...(dadosDia[c]?.[campo]||{})};
   if((dados[`m${i}`]||0)<=0)return;
   dados[`m${i}`]--;
@@ -389,7 +389,7 @@ function trocarCanal(canal){
 
 // ======================== CIDADES ========================
 async function carregarCidades(){
-  const res=await sbGet('Tabela3?order=ordem.asc');
+  const res=await sbGet('Tabela%205?order=ordem.asc');
   disparosCidades=Array.isArray(res)?res:[];
   renderConteudo();
 }
@@ -399,18 +399,18 @@ async function adicionarCidade(){
   const empresa=document.getElementById('inp-empresa')?.value;
   if(!cidade)return;
   const ordem=disparosCidades.filter(d=>d.empresa===empresa).length+1;
-  const res=await sbPost('Tabela3',{cidade,empresa,ordem});
+  const res=await sbPost('Tabela%205',{cidade,empresa,ordem});
   document.getElementById('inp-cidade').value='';
   await carregarCidades();
 }
 
 async function removerCidade(id){
-  await fetch(`${SB}/rest/v1/Tabela3?id=eq.${id}`,{method:'DELETE',headers:H});
+  await fetch(`${SB}/rest/v1/Tabela%205?id=eq.${id}`,{method:'DELETE',headers:H});
   await carregarCidades();
 }
 
 async function limparCidades(){
-  await fetch(`${SB}/rest/v1/Tabela3?id=gt.0`,{method:'DELETE',headers:H});
+  await fetch(`${SB}/rest/v1/Tabela%205?id=gt.0`,{method:'DELETE',headers:H});
   disparosCidades=[];
   renderConteudo();
 }
@@ -427,7 +427,7 @@ async function onDP(e,tid){
   disparosCidades.splice(ti,0,m);
   // Atualizar ordens no Supabase
   for(let i=0;i<disparosCidades.length;i++){
-    await sbPatch('Tabela3',`id=eq.${disparosCidades[i].id}`,{ordem:i+1});
+    await sbPatch('Tabela%205',`id=eq.${disparosCidades[i].id}`,{ordem:i+1});
   }
   renderConteudo();
 }
@@ -450,7 +450,7 @@ async function renderHistorico(){
   const dados=await sbGet(`disparos?${f}order=data.desc&limit=60`);
   if(!Array.isArray(dados)||!dados.length){c.innerHTML='<p class="text-zinc-600 text-sm italic text-center">Sem histórico ainda.</p>';return;}
   c.innerHTML=dados.map(dia=>{
-    const d=dia.dados_dbug||{};const w=dia.dados_webi||{};
+    const d=dia.dados_dbug||{};const w=dia.dados_webifibra||{};
     const tD=Object.values(d).reduce((a,b)=>a+b,0);
     const tW=Object.values(w).reduce((a,b)=>a+b,0);
     return`<div class="bg-zinc-800 rounded-2xl p-5">
